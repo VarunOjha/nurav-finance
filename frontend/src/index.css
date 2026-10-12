@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Palette as RGB triplets (consumed by tailwind.config.ts). Light values are
+   Nurav Docs'; dark mode follows the OS. */
+:root {
+  --paper: 247 246 241;      /* #F7F6F1 */
+  --paper-warm: 237 236 234; /* #EDECEA */
+  --ink: 26 25 24;           /* #1A1918 */
+  --ink-muted: 107 104 96;   /* #6B6860 */
+  --ink-faint: 155 152 144;  /* #9B9890 */
+  --line: 216 214 207;       /* #D8D6CF */
+  --error: 185 28 28;        /* #B91C1C */
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: 22 21 20;
+    --paper-warm: 35 34 32;
+    --ink: 237 236 234;
+    --ink-muted: 163 160 153;
+    --ink-faint: 112 109 102;
+    --line: 58 57 54;
+    --error: 248 113 113;
+    color-scheme: dark;
+  }
+}
+
+html, body, #root { height: 100%; }
+body {
+  @apply bg-paper text-ink font-mono antialiased;
+}
+
+/* Login halftone field drift (same as Nurav Docs). */
+@keyframes halftone-drift {
+  from { background-position: 0 0; }
+  to   { background-position: 28px 28px; }
+}
+.halftone-field { animation: halftone-drift 30s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .halftone-field { animation: none; } }
+
+/* Numbers line up in every table and stat. */
+.num { font-variant-numeric: tabular-nums; }
+
+input[type='date']::-webkit-calendar-picker-indicator { opacity: 0.6; cursor: pointer; }
+@media (prefers-color-scheme: dark) {
+  input[type='date']::-webkit-calendar-picker-indicator { filter: invert(1); }
+}
