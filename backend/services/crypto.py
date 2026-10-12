@@ -36,6 +36,4 @@ def decrypt_account_number(token: str) -> str:
     try:
         return _fernet().decrypt(token.encode()).decode()
     except InvalidToken as exc:
-        raise CryptoConfigError(
-            "Stored account number cannot be decrypted — ACCOUNT_NUMBER_KEY differs from the key it was encrypted with."
-        ) from exc
+        raise CryptoConfigError("Stored account number cannot be decrypted — ACCOUNT_NUMBER_KEY differs from the key it was encrypted with.") from exc
