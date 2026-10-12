@@ -32,9 +32,7 @@ class Account(IdMixin, TimestampMixin, SoftDeleteMixin, Base):
     currency: Mapped[str] = mapped_column(String(3))  # ISO 4217
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    identifiers = relationship(
-        "AccountIdentifier", order_by="AccountIdentifier.position", back_populates="account"
-    )
+    identifiers = relationship("AccountIdentifier", order_by="AccountIdentifier.position", back_populates="account")
     links = relationship("AccountLink", order_by="AccountLink.position", back_populates="account")
     tag_links = relationship("AccountTag", back_populates="account")
 
@@ -65,10 +63,7 @@ class AccountLink(IdMixin, TimestampMixin, SoftDeleteMixin, Base):
 
 class AccountTag(IdMixin, TimestampMixin, SoftDeleteMixin, Base):
     __tablename__ = "account_tags"
-    __table_args__ = (
-        Index("uq_account_tags_live", "account_id", "tag_id", unique=True,
-              postgresql_where=text("deleted_at IS NULL")),
-    )
+    __table_args__ = (Index("uq_account_tags_live", "account_id", "tag_id", unique=True, postgresql_where=text("deleted_at IS NULL")),)
 
     account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id"), index=True)
     tag_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tags.id"), index=True)

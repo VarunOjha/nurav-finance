@@ -10,9 +10,9 @@ bare local tooling), the vault source is dormant and plain env vars are used.
 In the container the bootstrap vars arrive via `env_file: .env` in
 docker-compose.yml. ENV_FILE only matters for bare local runs.
 """
+
 import logging
 import os
-from typing import Dict, Tuple
 
 from pydantic import Field
 from pydantic_settings import (
@@ -41,7 +41,7 @@ class NuravCredsSettingsSource(EnvSettingsSource):
     CredsError and aborts startup (fail fast, no silent local fallback).
     """
 
-    def _load_env_vars(self) -> Dict[str, str]:
+    def _load_env_vars(self) -> dict[str, str]:
         if not nurav_creds.is_configured():
             return {}
         return {key.lower(): value for key, value in nurav_creds.get_secrets().items()}
@@ -62,6 +62,25 @@ class Settings(BaseSettings):
     jwt_secret: str = Field(default="")
     jwt_expire_minutes: int = Field(default=720)
     account_number_key: str = Field(default="")
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        # Vault sits directly below explicit constructor kwargs: for the keys it
+        # serves, it beats env vars and .env — no local override of a secret.
+        return (
+            init_settings,
+            NuravCredsSettingsSource(settings_cls),
+            env_settings,
+            dotenv_settings,
+            file_secret_settings,
+        )
 
 
 class ConfigError(RuntimeError):
@@ -88,9 +107,7 @@ def _validate(s: Settings) -> None:
             "Add them to the 'nurav-finance' vault app (see .env.reference) and restart."
         )
     if len(s.jwt_secret) < MIN_JWT_SECRET_LENGTH:
-        raise ConfigError(
-            f"JWT_SECRET must be a random value of at least {MIN_JWT_SECRET_LENGTH} characters."
-        )
+        raise ConfigError(f"JWT_SECRET must be a random value of at least {MIN_JWT_SECRET_LENGTH} characters.")
 
 
 # Singleton

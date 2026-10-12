@@ -10,7 +10,8 @@ The only way to see deleted rows is an explicit opt-out:
     db.execute(stmt.execution_options(include_deleted=True))
 which nothing in the app does today.
 """
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, create_engine, event
 from sqlalchemy.orm import (
@@ -27,7 +28,7 @@ from config import settings
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 engine = create_engine(settings.database_url, pool_pre_ping=True)
@@ -40,9 +41,7 @@ class Base(DeclarativeBase):
 
 
 class SoftDeleteMixin:
-    deleted_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True, default=None, index=True
-    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None, index=True)
 
     @property
     def is_deleted(self) -> bool:

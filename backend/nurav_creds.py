@@ -21,6 +21,7 @@ Hard rules (see .env.reference for the full protocol):
 Observability: fetch outcomes are logged via the stdlib logger — key counts,
 durations and HTTP status codes only.
 """
+
 import json
 import logging
 import os
@@ -55,14 +56,9 @@ def _config() -> tuple[str, str]:
     endpoint = os.environ.get("NURAV_CREDS_ENDPOINT", "").strip()
     token = os.environ.get("NURAV_CREDS_TOKEN", "").strip()
     if not endpoint:
-        raise CredsError(
-            "NURAV_CREDS_ENDPOINT is not set — add it to .env (see .env.reference)."
-        )
+        raise CredsError("NURAV_CREDS_ENDPOINT is not set — add it to .env (see .env.reference).")
     if not token:
-        raise CredsError(
-            "NURAV_CREDS_TOKEN is not set — rotate a token in the nurav-creds "
-            "portal (TOKENS tab) and add it to .env."
-        )
+        raise CredsError("NURAV_CREDS_TOKEN is not set — rotate a token in the nurav-creds " "portal (TOKENS tab) and add it to .env.")
     return endpoint, token
 
 
@@ -75,11 +71,7 @@ def get_secrets(force_refresh: bool = False) -> dict[str, str]:
     """
     global _cache, _fetched_at
     with _lock:
-        if (
-            not force_refresh
-            and _cache is not None
-            and time.monotonic() - _fetched_at < _CACHE_TTL_SECONDS
-        ):
+        if not force_refresh and _cache is not None and time.monotonic() - _fetched_at < _CACHE_TTL_SECONDS:
             return _cache
 
         endpoint, token = _config()
@@ -95,8 +87,7 @@ def get_secrets(force_refresh: bool = False) -> dict[str, str]:
             logger.error("nurav-creds fetch failed: HTTP %d", exc.code)
             if exc.code == 401:
                 raise CredsError(
-                    "nurav-creds token invalid or revoked — rotate it in the "
-                    "portal (TOKENS tab) and update NURAV_CREDS_TOKEN in .env."
+                    "nurav-creds token invalid or revoked — rotate it in the " "portal (TOKENS tab) and update NURAV_CREDS_TOKEN in .env."
                 ) from exc
             if exc.code == 403:
                 raise CredsError(
@@ -106,38 +97,33 @@ def get_secrets(force_refresh: bool = False) -> dict[str, str]:
                 ) from exc
             if exc.code == 429:
                 retry_after = exc.headers.get("Retry-After", "60")
-                raise CredsError(
-                    f"nurav-creds rate limited, retry in {retry_after}s"
-                ) from exc
+                raise CredsError(f"nurav-creds rate limited, retry in {retry_after}s") from exc
             raise CredsError(f"nurav-creds fetch failed: HTTP {exc.code}") from exc
         except (OSError, json.JSONDecodeError) as exc:
             # exc carries no secret material here: the request/URL hold only
             # the endpoint, and no response body made it into the exception.
             if _cache is not None:
                 logger.warning(
-                    "nurav-creds fetch failed (%s: %s); serving stale map "
-                    "(%d keys, age %.0fs)",
-                    type(exc).__name__, exc, len(_cache),
+                    "nurav-creds fetch failed (%s: %s); serving stale map " "(%d keys, age %.0fs)",
+                    type(exc).__name__,
+                    exc,
+                    len(_cache),
                     time.monotonic() - _fetched_at,
                 )
                 return _cache  # serve stale on transient failure
             logger.error("nurav-creds unreachable with no cached map (%s)", exc)
             raise CredsError(f"nurav-creds unreachable: {exc}") from exc
 
-        if not isinstance(payload, dict) or not all(
-            isinstance(k, str) and isinstance(v, str) for k, v in payload.items()
-        ):
+        if not isinstance(payload, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in payload.items()):
             logger.error("nurav-creds returned an unexpected payload shape")
-            raise CredsError(
-                "nurav-creds returned an unexpected payload shape "
-                "(expected a flat JSON object of string values)."
-            )
+            raise CredsError("nurav-creds returned an unexpected payload shape " "(expected a flat JSON object of string values).")
 
         _cache = payload
         _fetched_at = time.monotonic()
         logger.info(
             "nurav-creds: fetched %d keys in %.0fms",
-            len(payload), (time.monotonic() - started) * 1000,
+            len(payload),
+            (time.monotonic() - started) * 1000,
         )
         return _cache
 

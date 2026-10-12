@@ -10,3 +10,5 @@ passlib[bcrypt]==1.7.4
 # passlib 1.7.4 reads bcrypt.__about__, which bcrypt>=4.1 removed.
 bcrypt==4.0.1
 cryptography==44.0.0
+# OAuth2 form login (/api/auth/token) for the interactive API docs.
+python-multipart==0.0.20

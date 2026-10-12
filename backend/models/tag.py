@@ -21,10 +21,7 @@ class Tag(IdMixin, TimestampMixin, SoftDeleteMixin, Base):
     """User-level label, shared by all of the user's tenants."""
 
     __tablename__ = "tags"
-    __table_args__ = (
-        Index("uq_tags_user_name_live", "user_id", "name", unique=True,
-              postgresql_where=text("deleted_at IS NULL")),
-    )
+    __table_args__ = (Index("uq_tags_user_name_live", "user_id", "name", unique=True, postgresql_where=text("deleted_at IS NULL")),)
 
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
     name: Mapped[str] = mapped_column(String(40))

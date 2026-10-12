@@ -30,10 +30,7 @@ class Portfolio(IdMixin, TimestampMixin, SoftDeleteMixin, Base):
 
 class PortfolioTag(IdMixin, TimestampMixin, SoftDeleteMixin, Base):
     __tablename__ = "portfolio_tags"
-    __table_args__ = (
-        Index("uq_portfolio_tags_live", "portfolio_id", "tag_id", unique=True,
-              postgresql_where=text("deleted_at IS NULL")),
-    )
+    __table_args__ = (Index("uq_portfolio_tags_live", "portfolio_id", "tag_id", unique=True, postgresql_where=text("deleted_at IS NULL")),)
 
     portfolio_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("portfolios.id"), index=True)
     tag_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tags.id"), index=True)
@@ -50,10 +47,7 @@ class Snapshot(IdMixin, TimestampMixin, SoftDeleteMixin, Base):
     """
 
     __tablename__ = "snapshots"
-    __table_args__ = (
-        Index("uq_snapshots_portfolio_asof_live", "portfolio_id", "as_of", unique=True,
-              postgresql_where=text("deleted_at IS NULL")),
-    )
+    __table_args__ = (Index("uq_snapshots_portfolio_asof_live", "portfolio_id", "as_of", unique=True, postgresql_where=text("deleted_at IS NULL")),)
 
     portfolio_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("portfolios.id"), index=True)
     as_of: Mapped[date] = mapped_column(Date)
