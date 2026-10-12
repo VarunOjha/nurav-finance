@@ -1,0 +1,24 @@
+# Nurav Finance — local app.  docker compose up --build  ->  http://localhost:8020
+#
+# .env holds only the nurav-creds bootstrap (NURAV_CREDS_ENDPOINT, NURAV_CREDS_TOKEN)
+# plus optional knobs; every secret (DATABASE_URL, JWT_SECRET, ACCOUNT_NUMBER_KEY)
+# is fetched from the vault at boot. See .env.reference.
+services:
+  app:
+    build:
+      context: .
+      args:
+        APP_VERSION: ${APP_VERSION:-}
+    container_name: nurav-finance
+    restart: unless-stopped
+    ports:
+      # Loopback only by default; set BIND_HOST=0.0.0.0 in .env to expose on the LAN.
+      - "${BIND_HOST:-127.0.0.1}:${PORT:-8020}:8000"
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=5).status == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
