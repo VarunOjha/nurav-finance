@@ -30,12 +30,12 @@ Rules that hold everywhere:
 
 Prerequisites: Docker Desktop, and a `nurav-finance` app in the nurav-creds vault.
 
-1. Put `DATABASE_URL` (the new Neon project's connection string) in the vault.
-2. `cp .env.reference .env`, fill in `NURAV_CREDS_ENDPOINT` + `NURAV_CREDS_TOKEN`, and set these
-   (in `.env` or in the vault; the vault wins if both are set):
+1. Populate the vault (see `.env.reference`, Section 3):
+   - `DATABASE_URL` — the new Neon project's connection string
    - `JWT_SECRET` — `python -c "import secrets; print(secrets.token_urlsafe(48))"`
    - `ACCOUNT_NUMBER_KEY` — `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
      **Back this key up.** Without it, stored account numbers can't be decrypted.
+2. `cp .env.reference .env` and fill in `NURAV_CREDS_ENDPOINT` + `NURAV_CREDS_TOKEN`. Nothing else goes in `.env`.
 3. `docker compose up --build -d`
 4. Open http://localhost:8020 and register.
 

@@ -2,9 +2,8 @@
 
 Credentials live in the nurav-creds vault and are fetched once at boot by
 `NuravCredsSettingsSource` (see backend/nurav_creds.py). The local environment
-carries the two bootstrap variables (NURAV_CREDS_ENDPOINT/_TOKEN), the
-app-generated secrets the vault doesn't serve (JWT_SECRET, ACCOUNT_NUMBER_KEY)
-and non-secret knobs. For keys the vault serves, its values take precedence over
+carries only the two bootstrap variables (NURAV_CREDS_ENDPOINT/_TOKEN) plus
+non-secret knobs. For keys the vault serves, its values take precedence over
 env vars and the env file. When the bootstrap variables are absent (unit tests,
 bare local tooling), the vault source is dormant and plain env vars are used.
 
@@ -28,12 +27,9 @@ import nurav_creds
 
 _logger = logging.getLogger("config")
 
-# Keys that must come from the vault. Checked against the vault MAP (not the
+# Vault keys the app cannot run without. Checked against the vault MAP (not the
 # populated field) so an absent key is caught instead of masked by a default.
-REQUIRED_VAULT_KEYS = ("DATABASE_URL",)
-# App-generated secrets: served by the vault if present there, otherwise read
-# from .env. Either way they must be set.
-REQUIRED_SECRETS = ("JWT_SECRET", "ACCOUNT_NUMBER_KEY")
+REQUIRED_VAULT_KEYS = ("DATABASE_URL", "JWT_SECRET", "ACCOUNT_NUMBER_KEY")
 MIN_JWT_SECRET_LENGTH = 32
 
 
@@ -111,9 +107,6 @@ def _validate(s: Settings) -> None:
             f"nurav-creds is missing required keys: {', '.join(missing)}. "
             "Add them to the 'nurav-finance' vault app (see .env.reference) and restart."
         )
-    unset = [k for k in REQUIRED_SECRETS if not getattr(s, k.lower()).strip()]
-    if unset:
-        raise ConfigError(f"Missing required secrets: {', '.join(unset)}. Set them in the vault or in .env (see .env.reference).")
     if len(s.jwt_secret) < MIN_JWT_SECRET_LENGTH:
         raise ConfigError(f"JWT_SECRET must be a random value of at least {MIN_JWT_SECRET_LENGTH} characters.")
     try:
