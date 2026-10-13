@@ -3,10 +3,12 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { apiErrorMessage } from '../api/client'
 import { LogoMark } from '../components/Logo'
 import { Button } from '../components/ui/Button'
-import { FormError, Input, Select } from '../components/ui/Field'
+import { DateField } from '../components/ui/DateField'
+import { FormError, Input, PasswordInput, Select } from '../components/ui/Field'
 import { Tabs } from '../components/ui/Primitives'
 import { useAuth } from '../context/AuthContext'
-import { GENDER_LABELS } from '../lib/format'
+import { GENDER_LABELS, todayISO } from '../lib/format'
+import { birthDateError, EARLIEST_BIRTH_DATE, emailError, phoneError } from '../lib/validate'
 
 type Mode = 'signin' | 'register'
 
@@ -78,11 +80,15 @@ function SignInForm() {
   const done = useAfterAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [emailTouched, setEmailTouched] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const emailProblem = emailError(email)
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
+    setEmailTouched(true)
+    if (emailProblem || !password) return
     setError(null)
     setBusy(true)
     try {
@@ -97,11 +103,20 @@ function SignInForm() {
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-5" noValidate>
-      <Input id="login-email" label="Email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
       <Input
+        id="login-email"
+        label="Email"
+        type="email"
+        autoComplete="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        onBlur={() => setEmailTouched(true)}
+        error={emailTouched && email ? emailProblem : null}
+        required
+      />
+      <PasswordInput
         id="login-password"
         label="Password"
-        type="password"
         autoComplete="current-password"
         value={password}
         onChange={(e) => setPassword(e.target.value)}
@@ -132,14 +147,33 @@ function RegisterForm() {
   })
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // Field errors appear once a field is left (or on submit), not mid-typing.
+  const [touched, setTouched] = useState<Partial<Record<keyof typeof form, boolean>>>({})
   const set = (key: keyof typeof form) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [key]: e.target.value }))
+  const blur = (key: keyof typeof form) => () => setTouched((t) => ({ ...t, [key]: true }))
+  const today = todayISO()
 
   const passwordShort = form.password.length > 0 && form.password.length < MIN_PASSWORD
   const mismatch = form.confirm.length > 0 && form.confirm !== form.password
-  const ready = form.first_name.trim() && form.last_name.trim() && form.email.trim() && form.password.length >= MIN_PASSWORD && !mismatch && form.confirm
+  const problems = {
+    email: emailError(form.email),
+    phone: phoneError(form.phone),
+    date_of_birth: birthDateError(form.date_of_birth, today),
+  }
+  const show = (key: keyof typeof problems) => (touched[key] ? problems[key] : null)
+  const ready =
+    form.first_name.trim() &&
+    form.last_name.trim() &&
+    !problems.email &&
+    !problems.phone &&
+    !problems.date_of_birth &&
+    form.password.length >= MIN_PASSWORD &&
+    !mismatch &&
+    form.confirm
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
+    setTouched({ email: true, phone: true, date_of_birth: true })
     if (!ready) return
     setError(null)
     setBusy(true)
@@ -166,7 +200,18 @@ function RegisterForm() {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
         <Input id="reg-first" label="First name" autoComplete="given-name" value={form.first_name} onChange={set('first_name')} required />
         <Input id="reg-last" label="Last name" autoComplete="family-name" value={form.last_name} onChange={set('last_name')} required />
-        <Input id="reg-dob" label="Date of birth" type="date" autoComplete="bday" value={form.date_of_birth} onChange={set('date_of_birth')} />
+        <DateField
+          id="reg-dob"
+          label="Date of birth"
+          value={form.date_of_birth}
+          onChange={(e) => {
+            set('date_of_birth')(e)
+            blur('date_of_birth')()
+          }}
+          min={EARLIEST_BIRTH_DATE}
+          max={today}
+          error={show('date_of_birth')}
+        />
         <Select id="reg-gender" label="Gender" value={form.gender} onChange={set('gender')}>
           <option value="">Select…</option>
           {Object.entries(GENDER_LABELS).map(([value, label]) => (
@@ -176,13 +221,33 @@ function RegisterForm() {
           ))}
         </Select>
       </div>
-      <Input id="reg-email" label="Email · used to sign in" type="email" autoComplete="email" value={form.email} onChange={set('email')} required />
-      <Input id="reg-phone" label="Phone" type="tel" autoComplete="tel" value={form.phone} onChange={set('phone')} />
+      <Input
+        id="reg-email"
+        label="Email · used to sign in"
+        type="email"
+        autoComplete="email"
+        value={form.email}
+        onChange={set('email')}
+        onBlur={blur('email')}
+        error={show('email')}
+        required
+      />
+      <Input
+        id="reg-phone"
+        label="Phone · optional"
+        type="tel"
+        autoComplete="tel"
+        placeholder="+1 415 555 0123"
+        value={form.phone}
+        onChange={set('phone')}
+        onBlur={blur('phone')}
+        error={show('phone')}
+        hint="Include the country code, e.g. +91 or +1"
+      />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-        <Input
+        <PasswordInput
           id="reg-password"
           label="Password"
-          type="password"
           autoComplete="new-password"
           value={form.password}
           onChange={set('password')}
@@ -190,10 +255,9 @@ function RegisterForm() {
           error={passwordShort ? `At least ${MIN_PASSWORD} characters` : null}
           required
         />
-        <Input
+        <PasswordInput
           id="reg-confirm"
           label="Confirm password"
-          type="password"
           autoComplete="new-password"
           value={form.confirm}
           onChange={set('confirm')}
@@ -204,7 +268,7 @@ function RegisterForm() {
       <FormError message={error} />
       <div className="flex items-center justify-between gap-4">
         <p className="font-mono text-[10px] text-ink-faint">Creates your DEFAULT_SELF tenant and default tags.</p>
-        <Button type="submit" isLoading={busy} disabled={!ready}>
+        <Button type="submit" isLoading={busy} disabled={!form.first_name.trim() || !form.last_name.trim() || !form.email.trim() || !form.password || !form.confirm}>
           Create account
         </Button>
       </div>

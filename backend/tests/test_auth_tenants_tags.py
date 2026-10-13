@@ -93,3 +93,22 @@ def test_tags_crud_seed_and_shared_across_tenants(api: Api):
     assert detail["tags"] == []
     names = [t["name"] for t in api.post("/api/tags/seed").json()]
     assert names.count("fixed-income") == 1 and "travel" in names
+
+
+def test_register_validates_phone_email_and_birth_date(client):
+    base = {"first_name": "A", "last_name": "B", "password": "secret1"}
+    bad = [
+        {"email": "not-an-email"},
+        {"email": "p1@example.com", "phone": "12-34"},
+        {"email": "p2@example.com", "phone": "call me maybe"},
+        {"email": "p3@example.com", "phone": "+1 234 567 890 123 456"},
+        {"email": "p4@example.com", "date_of_birth": "2999-01-01"},
+        {"email": "p5@example.com", "date_of_birth": "1850-01-01"},
+    ]
+    for extra in bad:
+        assert client.post("/api/auth/register", json=base | extra).status_code == 422, extra
+    ok = client.post("/api/auth/register", json=base | {"email": "ok@example.com", "phone": " +1 (415) 555-0123 ", "date_of_birth": "1990-05-17"})
+    assert ok.status_code == 201, ok.text
+    assert ok.json()["user"]["phone"] == "+1 (415) 555-0123"
+    blank = client.post("/api/auth/register", json=base | {"email": "blank@example.com", "phone": "  "})
+    assert blank.json()["user"]["phone"] is None

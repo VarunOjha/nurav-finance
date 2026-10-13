@@ -3,7 +3,8 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { X } from 'lucide-react'
 import { apiErrorMessage } from '../api/client'
 import { Button } from '../components/ui/Button'
-import { FormError, Input, TextArea } from '../components/ui/Field'
+import { FormError, TextArea } from '../components/ui/Field'
+import { DateField } from '../components/ui/DateField'
 import { Chip, ErrorBox, Loading, Page, PageHeader, Table, td, th } from '../components/ui/Primitives'
 import { usePortfolio, usePortfolioMutations, useSnapshotPrefill } from '../hooks/queries'
 import { cn } from '../lib/cn'
@@ -168,7 +169,7 @@ export default function SnapshotPage() {
       />
 
       <div className="flex flex-wrap items-end gap-6">
-        <Input id="snap-asof" label="As of" type="date" max={today} value={asOf} onChange={(e) => setAsOf(e.target.value)} className="w-48" />
+        <DateField id="snap-asof" label="As of" max={today} value={asOf} onChange={(e) => setAsOf(e.target.value)} className="w-48" />
         <div className="font-mono text-[11px] text-ink-muted pb-2 flex flex-wrap items-center gap-3">
           {prefill.isLoading ? (
             'Looking for the previous snapshot…'

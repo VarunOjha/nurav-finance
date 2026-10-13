@@ -7,6 +7,7 @@ import type { PortfolioInput, PortfolioSummary } from '../types/api'
 import { TagPicker } from './TagPicker'
 import { Button } from './ui/Button'
 import { FormError, Input, Label, SectionTitle, Select, TextArea } from './ui/Field'
+import { DateField } from './ui/DateField'
 import { Modal } from './ui/Modal'
 
 interface Props {
@@ -143,8 +144,8 @@ export function PortfolioFormModal({ open, onOpenChange, portfolio, onSaved }: P
                 </option>
               ))}
             </Select>
-            <Input id="pf-opened" label="Opened on" type="date" value={form.opened_on} onChange={set('opened_on')} />
-            <Input id="pf-closed" label="Closed on" type="date" value={form.closed_on} onChange={set('closed_on')} hint="Leave empty while active" />
+            <DateField id="pf-opened" label="Opened on" value={form.opened_on} onChange={set('opened_on')} />
+            <DateField id="pf-closed" label="Closed on" value={form.closed_on} onChange={set('closed_on')} hint="Leave empty while active" />
           </div>
         </section>
         <section className="flex flex-col gap-4">

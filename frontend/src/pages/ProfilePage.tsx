@@ -4,14 +4,16 @@ import { Pencil, Trash2 } from 'lucide-react'
 import { apiErrorMessage } from '../api/client'
 import { authApi } from '../api/endpoints'
 import { Button } from '../components/ui/Button'
-import { FormError, Input, Select } from '../components/ui/Field'
+import { DateField } from '../components/ui/DateField'
+import { FormError, Input, PasswordInput, Select } from '../components/ui/Field'
 import { ConfirmDialog, Modal } from '../components/ui/Modal'
 import { Chip, Loading, Page, PageHeader, Table, td, th } from '../components/ui/Primitives'
 import { useAuth } from '../context/AuthContext'
 import { useTenant } from '../context/TenantContext'
 import { useTagMutations, useTags, useTenantMutations } from '../hooks/queries'
 import { cn } from '../lib/cn'
-import { formatDate, GENDER_LABELS } from '../lib/format'
+import { formatDate, GENDER_LABELS, todayISO } from '../lib/format'
+import { birthDateError, EARLIEST_BIRTH_DATE, emailError, phoneError } from '../lib/validate'
 import type { Gender, Tag, Tenant } from '../types/api'
 
 const sectionTitle = 'font-mono text-[10px] font-medium uppercase tracking-widest text-ink-muted'
@@ -35,13 +37,24 @@ function DetailsSection() {
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [touched, setTouched] = useState<Partial<Record<keyof typeof form, boolean>>>({})
   const set = (key: keyof typeof form) => (e: { target: { value: string } }) => {
     setSaved(false)
     setForm((f) => ({ ...f, [key]: e.target.value }))
   }
+  const blur = (key: keyof typeof form) => () => setTouched((t) => ({ ...t, [key]: true }))
+  const today = todayISO()
+  const problems = {
+    email: emailError(form.email),
+    phone: phoneError(form.phone),
+    date_of_birth: birthDateError(form.date_of_birth, today),
+  }
+  const show = (key: keyof typeof problems) => (touched[key] ? problems[key] : null)
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
+    setTouched({ email: true, phone: true, date_of_birth: true })
+    if (problems.email || problems.phone || problems.date_of_birth) return
     setError(null)
     setBusy(true)
     try {
@@ -69,7 +82,18 @@ function DetailsSection() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <Input id="p-first" label="First name" value={form.first_name} onChange={set('first_name')} required />
           <Input id="p-last" label="Last name" value={form.last_name} onChange={set('last_name')} required />
-          <Input id="p-dob" label="Date of birth" type="date" value={form.date_of_birth} onChange={set('date_of_birth')} />
+          <DateField
+            id="p-dob"
+            label="Date of birth"
+            value={form.date_of_birth}
+            onChange={(e) => {
+              set('date_of_birth')(e)
+              blur('date_of_birth')()
+            }}
+            min={EARLIEST_BIRTH_DATE}
+            max={today}
+            error={show('date_of_birth')}
+          />
           <Select id="p-gender" label="Gender" value={form.gender} onChange={set('gender')}>
             <option value="">Select…</option>
             {Object.entries(GENDER_LABELS).map(([value, label]) => (
@@ -79,8 +103,18 @@ function DetailsSection() {
             ))}
           </Select>
         </div>
-        <Input id="p-email" label="Email · login" type="email" value={form.email} onChange={set('email')} required />
-        <Input id="p-phone" label="Phone" type="tel" value={form.phone} onChange={set('phone')} />
+        <Input id="p-email" label="Email · login" type="email" value={form.email} onChange={set('email')} onBlur={blur('email')} error={show('email')} required />
+        <Input
+          id="p-phone"
+          label="Phone · optional"
+          type="tel"
+          placeholder="+1 415 555 0123"
+          value={form.phone}
+          onChange={set('phone')}
+          onBlur={blur('phone')}
+          error={show('phone')}
+          hint="Include the country code, e.g. +91 or +1"
+        />
         <FormError message={error} />
         <div className="flex items-center justify-end gap-4">
           {saved && <span className="font-mono text-[11px] text-ink-muted">Saved</span>}
@@ -126,22 +160,20 @@ function PasswordForm() {
   return (
     <form onSubmit={submit} className="flex flex-col gap-5 border-t border-line pt-5" noValidate>
       <h2 className={sectionTitle}>Change password</h2>
-      <Input id="pw-current" label="Current password" type="password" autoComplete="current-password" value={form.current} onChange={set('current')} />
+      <PasswordInput id="pw-current" label="Current password" autoComplete="current-password" value={form.current} onChange={set('current')} />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-        <Input
+        <PasswordInput
           id="pw-new"
           label="New password"
-          type="password"
           autoComplete="new-password"
           value={form.next}
           onChange={set('next')}
           hint={`At least ${MIN_PASSWORD} characters`}
           error={short ? `At least ${MIN_PASSWORD} characters` : null}
         />
-        <Input
+        <PasswordInput
           id="pw-confirm"
           label="Confirm"
-          type="password"
           autoComplete="new-password"
           value={form.confirm}
           onChange={set('confirm')}

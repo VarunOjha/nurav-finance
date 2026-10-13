@@ -7,7 +7,8 @@ import { ACCOUNT_TYPE_LABELS, COUNTRIES, CURRENCIES, todayISO } from '../lib/for
 import type { AccountDetail, AccountInput, AccountType } from '../types/api'
 import { TagPicker } from './TagPicker'
 import { Button } from './ui/Button'
-import { FormError, Input, SectionTitle, Select, TextArea } from './ui/Field'
+import { FormError, Input, PasswordInput, SectionTitle, Select, TextArea } from './ui/Field'
+import { DateField } from './ui/DateField'
 import { Modal } from './ui/Modal'
 
 const QUICK_IDENTIFIERS = ['IFSC', 'Routing no.', 'SWIFT', 'IBAN', 'Bank code', 'Branch', 'MICR']
@@ -189,10 +190,9 @@ export function AccountFormModal({ open, onOpenChange, account, onSaved }: Props
               <Input id="a-name" label="Account name" value={form.name} onChange={bind('name')} required />
               <Input id="a-inst" label="Institution" value={form.institution} onChange={bind('institution')} />
               <div>
-                <Input
+                <PasswordInput
                   id="a-num"
                   label="Account number · encrypted"
-                  type="password"
                   autoComplete="off"
                   value={form.account_number}
                   disabled={form.clear_number}
@@ -215,8 +215,8 @@ export function AccountFormModal({ open, onOpenChange, account, onSaved }: Props
                 ))}
               </Select>
               <div className="hidden sm:block" />
-              <Input id="a-open" label="Opened on" type="date" value={form.opened_on} onChange={bind('opened_on')} />
-              <Input id="a-close" label="Closed on" type="date" value={form.closed_on} onChange={bind('closed_on')} hint="Leave empty while active" />
+              <DateField id="a-open" label="Opened on" value={form.opened_on} onChange={bind('opened_on')} />
+              <DateField id="a-close" label="Closed on" value={form.closed_on} onChange={bind('closed_on')} hint="Leave empty while active" />
             </div>
           </section>
 
@@ -275,7 +275,7 @@ export function AccountFormModal({ open, onOpenChange, account, onSaved }: Props
                   onChange={bind('opening_amount')}
                   error={openingInvalid ? 'Enter a number' : null}
                 />
-                <Input id="a-asof" label="As of" type="date" max={todayISO()} value={form.opening_as_of} onChange={bind('opening_as_of')} />
+                <DateField id="a-asof" label="As of" max={todayISO()} value={form.opening_as_of} onChange={bind('opening_as_of')} />
               </div>
             </section>
           )}

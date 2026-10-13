@@ -8,6 +8,7 @@ import { AccountFormModal } from '../components/AccountFormModal'
 import { axisTick, useChartTheme } from '../components/charts/chartTheme'
 import { Button } from '../components/ui/Button'
 import { FormError, Input, TextArea } from '../components/ui/Field'
+import { DateField } from '../components/ui/DateField'
 import { ConfirmDialog } from '../components/ui/Modal'
 import { Chip, Empty, ErrorBox, Loading, Page, PageHeader, StatCard, Table, td, th } from '../components/ui/Primitives'
 import { useAccount, useAccountMutations, useBalances } from '../hooks/queries'
@@ -308,10 +309,9 @@ function RecordBalance({ account }: { account: AccountDetail }) {
         onChange={(e) => setAmount(e.target.value)}
         error={invalid ? 'Enter a number' : null}
       />
-      <Input
+      <DateField
         id="rb-asof"
         label="As of"
-        type="date"
         value={asOf}
         max={todayISO()}
         min={account.opened_on ?? undefined}
