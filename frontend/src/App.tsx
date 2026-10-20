@@ -13,7 +13,9 @@ const PortfoliosPage = lazy(() => import('./pages/PortfoliosPage'))
 const PortfolioDetailPage = lazy(() => import('./pages/PortfolioDetailPage'))
 const SnapshotPage = lazy(() => import('./pages/SnapshotPage'))
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'))
-const ProfilePage = lazy(() => import('./pages/ProfilePage'))
+const WealthAgentPage = lazy(() => import('./pages/WealthAgentPage'))
+const WealthPlansPage = lazy(() => import('./pages/WealthPlansPage'))
+const WealthPlanPage = lazy(() => import('./pages/WealthPlanPage'))
 
 function RequireAuth() {
   const { user } = useAuth()
@@ -24,6 +26,12 @@ function RequireAuth() {
       <AppLayout />
     </TenantProvider>
   )
+}
+
+// Old /profile links (and /profile#tenants) open the profile modal over Accounts.
+function ProfileRedirect() {
+  const { hash } = useLocation()
+  return <Navigate to={`/accounts?profile=${hash === '#tenants' ? 'tenants' : ''}`} replace />
 }
 
 const page = (el: JSX.Element) => <Suspense fallback={<div className="max-w-7xl mx-auto px-4 sm:px-8"><Loading /></div>}>{el}</Suspense>
@@ -41,7 +49,12 @@ export default function App() {
         <Route path="/portfolios/:portfolioId" element={page(<PortfolioDetailPage />)} />
         <Route path="/portfolios/:portfolioId/snapshots/new" element={page(<SnapshotPage />)} />
         <Route path="/analytics" element={page(<AnalyticsPage />)} />
-        <Route path="/profile" element={page(<ProfilePage />)} />
+        <Route path="/wealth" element={page(<WealthAgentPage />)} />
+        <Route path="/wealth/plans" element={page(<WealthPlansPage />)} />
+        <Route path="/wealth/plans/:planId" element={page(<WealthPlanPage />)} />
+        {/* The FIRE wizard was replaced by the Wealth Agent. */}
+        <Route path="/fire/*" element={<Navigate to="/wealth" replace />} />
+        <Route path="/profile" element={<ProfileRedirect />} />
         <Route path="*" element={<Navigate to="/accounts" replace />} />
       </Route>
     </Routes>

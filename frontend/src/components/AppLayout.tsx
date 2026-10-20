@@ -1,30 +1,55 @@
-import { useEffect, useRef, useState } from 'react'
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { NavLink, Outlet, useLocation, useSearchParams } from 'react-router-dom'
 import * as Popover from '@radix-ui/react-popover'
-import { BarChart3, Briefcase, Landmark, Menu, UserCircle } from 'lucide-react'
+import { BarChart3, Compass, Landmark, Menu, Palette, UserCircle } from 'lucide-react'
 import { Logo } from './Logo'
 import { TenantSwitcher } from './TenantSwitcher'
+import { ThemePicker } from './ThemePicker'
+import { RefMode } from './RefMode'
 import { useAuth } from '../context/AuthContext'
+import type { ProfileSection } from './ProfileModal'
+
+const ProfileModal = lazy(() => import('./ProfileModal'))
 
 const NAV = [
   { to: '/accounts', label: 'Accounts', icon: Landmark },
-  { to: '/portfolios', label: 'Portfolios', icon: Briefcase },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
-  { to: '/profile', label: 'Profile', icon: UserCircle },
+  { to: '/wealth', label: 'Wealth Agent', icon: Compass },
 ] as const
 
 // Baked in at image build time (--build-arg APP_VERSION=v1.0.0); local builds show "dev".
 const APP_VERSION: string = import.meta.env.VITE_APP_VERSION || 'dev'
 
-// App shell — header (menu, logo, tenant switcher, user menu), slide-in nav
+// App shell — header (menu, logo, user menu) with the tenant bar under it, slide-in nav
 // drawer scoped to the content area, and footer. Same structure as Nurav Docs.
 export function AppLayout() {
   const { user, signOut } = useAuth()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [userOpen, setUserOpen] = useState(false)
+  const [themeOpen, setThemeOpen] = useState(false)
   const menuButtonRef = useRef<HTMLButtonElement | null>(null)
   const location = useLocation()
-  const navigate = useNavigate()
+  const [params, setParams] = useSearchParams()
+
+  // Profile is a modal over the current page, driven by ?profile (or
+  // ?profile=tenants) so it survives reloads, works as a link and Back closes it.
+  const profileParam = params.get('profile')
+  const profileOpen = profileParam !== null
+  const openProfile = (section: ProfileSection = null) => {
+    setDrawerOpen(false)
+    setParams((p) => {
+      p.set('profile', section ?? '')
+      return p
+    })
+  }
+  const closeProfile = () =>
+    setParams(
+      (p) => {
+        p.delete('profile')
+        return p
+      },
+      { replace: true },
+    )
 
   // Navigating closes the drawer — it overlays the content it just changed.
   useEffect(() => {
@@ -68,47 +93,66 @@ export function AppLayout() {
             <NavLink to="/accounts" className="focus:outline-none sm:hidden" aria-label="Nurav Finance home">
               <Logo size="sm" />
             </NavLink>
-            <span aria-hidden="true" className="hidden md:block w-px h-7 bg-line mx-1" />
-            <TenantSwitcher />
           </div>
 
-          <Popover.Root open={userOpen} onOpenChange={setUserOpen}>
-            <Popover.Trigger asChild>
-              <button aria-label="User menu" className="text-ink-muted hover:text-ink focus:outline-none shrink-0">
-                <UserCircle className="w-8 h-8" aria-hidden="true" />
-              </button>
-            </Popover.Trigger>
-            <Popover.Portal>
-              <Popover.Content align="end" sideOffset={8} className="z-50 w-52 bg-paper border border-line p-2">
-                <div className="px-2 py-1.5 mb-1">
-                  <p className="font-mono text-xs text-ink truncate">
-                    {user?.first_name} {user?.last_name}
-                  </p>
-                  <p className="font-mono text-[10px] text-ink-muted mt-0.5 truncate">{user?.email}</p>
-                </div>
-                <div className="border-t border-line pt-1">
-                  <button
-                    onClick={() => {
-                      setUserOpen(false)
-                      navigate('/profile')
-                    }}
-                    className="w-full text-left px-2 py-1.5 font-mono uppercase tracking-widest text-xs text-ink-muted hover:text-ink hover:underline focus:outline-none"
-                  >
-                    Profile
-                  </button>
-                  <button
-                    onClick={() => {
-                      setUserOpen(false)
-                      signOut()
-                    }}
-                    className="w-full text-left px-2 py-1.5 font-mono uppercase tracking-widest text-xs text-ink-muted hover:text-ink hover:underline focus:outline-none"
-                  >
-                    Sign Out
-                  </button>
-                </div>
-              </Popover.Content>
-            </Popover.Portal>
-          </Popover.Root>
+          <div className="flex items-center gap-3 sm:gap-4 shrink-0">
+            <RefMode />
+            <Popover.Root open={themeOpen} onOpenChange={setThemeOpen}>
+              <Popover.Trigger asChild>
+                <button aria-label="Theme" title="Theme" className="text-ink-muted hover:text-ink focus:outline-none p-1">
+                  <Palette className="w-6 h-6" aria-hidden="true" />
+                </button>
+              </Popover.Trigger>
+              <Popover.Portal>
+                <Popover.Content align="end" sideOffset={8} className="z-50 w-72 bg-paper border border-line p-2 max-h-[80vh] overflow-y-auto">
+                  <p className="px-2 pt-1 pb-2 font-mono text-[10px] uppercase tracking-widest text-ink-muted">Theme</p>
+                  <ThemePicker />
+                </Popover.Content>
+              </Popover.Portal>
+            </Popover.Root>
+
+            <Popover.Root open={userOpen} onOpenChange={setUserOpen}>
+              <Popover.Trigger asChild>
+                <button aria-label="User menu" className="text-ink-muted hover:text-ink focus:outline-none shrink-0">
+                  <UserCircle className="w-8 h-8" aria-hidden="true" />
+                </button>
+              </Popover.Trigger>
+              <Popover.Portal>
+                <Popover.Content align="end" sideOffset={8} className="z-50 w-52 bg-paper border border-line p-2">
+                  <div className="px-2 py-1.5 mb-1">
+                    <p className="font-mono text-xs text-ink truncate">
+                      {user?.first_name} {user?.last_name}
+                    </p>
+                    <p className="font-mono text-[10px] text-ink-muted mt-0.5 truncate">{user?.email}</p>
+                  </div>
+                  <div className="border-t border-line pt-1">
+                    <button
+                      onClick={() => {
+                        setUserOpen(false)
+                        openProfile()
+                      }}
+                      className="w-full text-left px-2 py-1.5 font-mono uppercase tracking-widest text-xs text-ink-muted hover:text-ink hover:underline focus:outline-none"
+                    >
+                      Profile
+                    </button>
+                    <button
+                      onClick={() => {
+                        setUserOpen(false)
+                        signOut()
+                      }}
+                      className="w-full text-left px-2 py-1.5 font-mono uppercase tracking-widest text-xs text-ink-muted hover:text-ink hover:underline focus:outline-none"
+                    >
+                      Sign Out
+                    </button>
+                  </div>
+                </Popover.Content>
+              </Popover.Portal>
+            </Popover.Root>
+          </div>
+        </div>
+        {/* Tenant bar — everything below follows the selected tenant */}
+        <div className="border-t border-line px-3 sm:px-8 py-1 flex items-center min-w-0">
+          <TenantSwitcher />
         </div>
       </header>
 
@@ -136,6 +180,11 @@ export function AppLayout() {
         <main className="h-full overflow-y-auto">
           <Outlet />
         </main>
+        {profileOpen && (
+          <Suspense fallback={null}>
+            <ProfileModal open onOpenChange={(o) => !o && closeProfile()} section={profileParam === 'tenants' ? 'tenants' : null} />
+          </Suspense>
+        )}
       </div>
 
       <footer className="shrink-0 border-t border-line bg-paper">

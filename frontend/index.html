@@ -7,6 +7,17 @@
     <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#1A1918" />
     <title>Nurav Finance</title>
+    <script>
+      // Apply the saved theme before first paint (see src/lib/theme.ts).
+      ;(function () {
+        var modes = { paper: 'light', fog: 'light', linen: 'light', dusk: 'dark', ink: 'dark' }
+        var choice = 'system'
+        try { choice = localStorage.getItem('nurav-theme') || 'system' } catch (e) {}
+        if (!modes[choice]) choice = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'ink' : 'paper'
+        document.documentElement.dataset.theme = choice
+        document.documentElement.dataset.mode = modes[choice]
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

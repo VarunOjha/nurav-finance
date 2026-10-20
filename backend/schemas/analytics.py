@@ -44,6 +44,20 @@ class Allocation(BaseModel):
     by_tag: list[CurrencyAllocation]
 
 
+class TopAsset(BaseModel):
+    kind: Literal["account", "holding"]
+    name: str
+    symbol: str | None  # holdings only
+    group: str  # account type, or the holding's asset class
+    held_in: list[str]  # portfolios holding this symbol; empty for accounts
+    value: Decimal
+
+
+class CurrencyTopAssets(BaseModel):
+    currency: str
+    assets: list[TopAsset]  # every positive asset, largest first
+
+
 class TimelineEvent(BaseModel):
     date: date
     kind: Literal["account_opened", "account_closed", "portfolio_opened", "portfolio_closed"]
@@ -56,4 +70,5 @@ class Overview(BaseModel):
     currencies: list[CurrencySeries]
     tags: list[TagTrend]
     allocation: Allocation
+    top_assets: list[CurrencyTopAssets]
     timeline: list[TimelineEvent]

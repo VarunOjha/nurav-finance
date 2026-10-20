@@ -14,11 +14,26 @@ def q(value: Decimal) -> Decimal:
 
 
 def holding_value(h: Holding) -> Decimal:
-    return q(h.quantity * h.price)
+    return q(h.quantity * h.current_price)
+
+
+def holding_cost(h: Holding) -> Decimal | None:
+    return q(h.quantity * h.buy_price) if h.buy_price is not None else None
+
+
+def holding_gain(h: Holding) -> Decimal | None:
+    cost = holding_cost(h)
+    return holding_value(h) - cost if cost is not None else None
+
+
+def snapshot_cost(s: Snapshot) -> tuple[Decimal | None, int]:
+    """(Σ cost over holdings with a buy price, how many have one); cost is None when none do."""
+    costs = [c for c in (holding_cost(h) for h in s.holdings) if c is not None]
+    return (q(sum(costs, ZERO)) if costs else None), len(costs)
 
 
 def snapshot_total(s: Snapshot) -> Decimal:
-    return q(sum((h.quantity * h.price for h in s.holdings), ZERO))
+    return q(sum((h.quantity * h.current_price for h in s.holdings), ZERO))
 
 
 def share(part: Decimal, whole: Decimal) -> Decimal:
@@ -66,8 +81,11 @@ def compare(current: Snapshot, previous: Snapshot | None) -> list[dict]:
                 quantity=h.quantity,
                 previous_quantity=p.quantity if p else None,
                 quantity_change=(h.quantity - p.quantity) if p else None,
-                price=h.price,
+                buy_price=h.buy_price,
+                current_price=h.current_price,
                 value=value,
+                cost=holding_cost(h),
+                gain=holding_gain(h),
                 previous_value=prev_value,
                 value_change=value - prev_value,
                 weight=share(value, total),
@@ -88,8 +106,11 @@ def compare(current: Snapshot, previous: Snapshot | None) -> list[dict]:
                 quantity=None,
                 previous_quantity=p.quantity,
                 quantity_change=-p.quantity,
-                price=None,
+                buy_price=None,
+                current_price=None,
                 value=ZERO,
+                cost=None,
+                gain=None,
                 previous_value=prev_value,
                 value_change=-prev_value,
                 weight=ZERO,

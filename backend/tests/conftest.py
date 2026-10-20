@@ -121,7 +121,7 @@ class Api:
     def snapshot(self, portfolio_id: str, as_of: str, holdings: list[tuple]) -> dict:
         body = {
             "as_of": as_of,
-            "holdings": [{"symbol": s, "quantity": str(qty), "price": str(price), "asset_class": cls} for s, qty, price, cls in holdings],
+            "holdings": [{"symbol": s, "quantity": str(qty), "current_price": str(price), "asset_class": cls} for s, qty, price, cls in holdings],
         }
         res = self.post(f"/api/portfolios/{portfolio_id}/snapshots", json=body)
         assert res.status_code == 201, res.text

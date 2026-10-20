@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Trash2 } from 'lucide-react'
 import { apiErrorMessage } from '../api/client'
-import { axisTick, useChartTheme } from '../components/charts/chartTheme'
+import { useChartTheme } from '../components/charts/chartTheme'
+import { AllocationDonut, ChartCard, DivergingBars, DivergingLegend, Legend, Lines, RankedBars, type BarRow, type StackSeries } from '../components/charts/kit'
+import { ASSET_CLASS_ORDER, OTHER, colorSlices, slotColors } from '../components/charts/palette'
 import { PortfolioFormModal } from '../components/PortfolioFormModal'
 import { Button } from '../components/ui/Button'
 import { Select } from '../components/ui/Field'
@@ -63,9 +64,19 @@ export default function PortfolioDetailPage() {
   const comparison = useSnapshotComparison(portfolioId, currentId, compareId)
 
   const chartData = useMemo(
-    () => [...snaps].sort((a, b) => a.as_of.localeCompare(b.as_of)).map((s) => ({ as_of: s.as_of, total: toNumber(s.total) ?? 0 })),
+    () =>
+      [...snaps]
+        .sort((a, b) => a.as_of.localeCompare(b.as_of))
+        .map((s) => ({ as_of: s.as_of, total: toNumber(s.total) ?? 0, cost: toNumber(s.cost) })),
     [snaps],
   )
+  const hasCost = snaps.some((s) => s.cost !== null)
+  const lineSeries: StackSeries[] = [
+    { key: 'total', label: 'Value', color: theme.series[0] },
+    ...(hasCost ? [{ key: 'cost', label: 'Invested', color: theme.series[1] }] : []),
+  ]
+  const classColor = slotColors(theme, ASSET_CLASS_ORDER)
+  const className = (k: string) => ASSET_CLASS_LABELS[k] ?? k
 
   if (portfolio.isLoading) {
     return (
@@ -90,6 +101,37 @@ export default function PortfolioDetailPage() {
   const cmp = comparison.data
   const newCount = cmp?.holdings.filter((h) => h.status === 'new').length ?? 0
   const soldCount = cmp?.holdings.filter((h) => h.status === 'sold').length ?? 0
+
+  // Chart rows for the selected snapshot.
+  const TOP = 10
+  const current = (cmp?.holdings ?? []).filter((h) => h.status !== 'sold') // value desc from the API
+  const rest = current.slice(TOP)
+  const valueBars: BarRow[] = current.slice(0, TOP).map((h) => ({
+    key: h.symbol,
+    label: h.symbol,
+    value: toNumber(h.value) ?? 0,
+    color: classColor(h.asset_class) ?? theme.inkFaint,
+    detail: `${h.name ?? className(h.asset_class)} · ${percent(h.weight)}`,
+  }))
+  if (rest.length) {
+    valueBars.push({ key: OTHER, label: `${rest.length} more`, value: rest.reduce((s, h) => s + (toNumber(h.value) ?? 0), 0), color: theme.inkFaint })
+  }
+  const classLegend = [
+    ...[...new Set(current.slice(0, TOP).map((h) => h.asset_class))].map((c) => ({ label: className(c), color: classColor(c) ?? theme.inkFaint })),
+    ...(rest.length ? [{ label: 'Rest', color: theme.inkFaint }] : []),
+  ]
+  const gainRows = current
+    .filter((h) => h.gain !== null)
+    .map((h) => {
+      const cost = toNumber(h.cost) ?? 0
+      const gain = toNumber(h.gain) ?? 0
+      return { key: h.symbol, label: h.symbol, value: gain, detail: cost ? `${signedPercent(gain / cost)} on ${money(cost, cur)}` : undefined }
+    })
+    .sort((a, b) => b.value - a.value)
+  const movedRows = (cmp?.holdings ?? [])
+    .map((h) => ({ key: h.symbol, label: h.symbol, value: toNumber(h.value_change) ?? 0, detail: h.status }))
+    .filter((r) => r.value !== 0)
+    .sort((a, b) => b.value - a.value)
 
   const doDelete = async () => {
     setDeleteError(null)
@@ -205,56 +247,62 @@ export default function PortfolioDetailPage() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="border border-line p-5 lg:col-span-2 flex flex-col gap-3">
-              <h2 className="font-mono text-[10px] font-medium uppercase tracking-widest text-ink-muted">Value by snapshot</h2>
-              <div className="h-56">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-                    <CartesianGrid stroke={theme.line} vertical={false} />
-                    <XAxis
-                      dataKey="as_of"
-                      tick={{ ...axisTick, fill: theme.inkMuted }}
-                      tickLine={false}
-                      axisLine={{ stroke: theme.line }}
-                      tickFormatter={(v: string) => parseDate(v).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}
-                    />
-                    <YAxis
-                      tick={{ ...axisTick, fill: theme.inkMuted }}
-                      tickLine={false}
-                      axisLine={false}
-                      width={64}
-                      tickFormatter={(v: number) => money(v, cur, { compact: true })}
-                    />
-                    <Tooltip
-                      cursor={{ fill: theme.paperWarm }}
-                      contentStyle={{ background: theme.paper, border: `1px solid ${theme.line}`, borderRadius: 0, fontFamily: axisTick.fontFamily, fontSize: 11 }}
-                      labelFormatter={(v: string) => formatDate(v)}
-                      formatter={(v: number) => [money(v, cur), 'Total']}
-                    />
-                    <Bar dataKey="total" fill={theme.ink} maxBarSize={36} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-            <div className="border border-line p-5 flex flex-col gap-4">
-              <h2 className="font-mono text-[10px] font-medium uppercase tracking-widest text-ink-muted">Asset class</h2>
-              {cmp && cmp.allocation.length > 0 ? (
-                <ul className="flex flex-col gap-3">
-                  {cmp.allocation.map((s) => (
-                    <li key={s.label} className="flex flex-col gap-1.5">
-                      <div className="flex justify-between gap-3 font-mono text-xs">
-                        <span>{ASSET_CLASS_LABELS[s.label] ?? s.label}</span>
-                        <span className="num text-ink-muted">{percent(s.share)}</span>
-                      </div>
-                      <ShareBar share={toNumber(s.share) ?? 0} />
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="font-mono text-[11px] text-ink-faint">—</p>
-              )}
-            </div>
+            <ChartCard
+              title={hasCost ? 'Value vs invested · by snapshot' : 'Value by snapshot'}
+              className="lg:col-span-2"
+              aside={hasCost ? 'invested = quantity × buy price, for holdings that have one' : undefined}
+            >
+              <Lines
+                rows={chartData}
+                series={lineSeries}
+                xKey="as_of"
+                xFormat={(v) => parseDate(v).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}
+                xLabel={(v) => formatDate(v)}
+                valueFormat={(v) => money(v, cur)}
+                axisFormat={(v) => money(v, cur, { compact: true })}
+                dots
+              />
+              {lineSeries.length > 1 && <Legend items={lineSeries.map((l) => ({ ...l, line: true }))} />}
+            </ChartCard>
+            <ChartCard title={`Asset class${cmp ? ` · ${formatDate(cmp.current.as_of)}` : ''}`}>
+              <AllocationDonut slices={cmp ? colorSlices(cmp.allocation, classColor, theme, className) : []} currency={cur} empty="—" />
+            </ChartCard>
           </div>
+
+          {cmp && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <ChartCard title="Holdings by value" aside={rest.length ? `top ${TOP} of ${current.length}` : undefined}>
+                <RankedBars rows={valueBars} currency={cur} />
+                <Legend items={classLegend} />
+              </ChartCard>
+              <ChartCard
+                title="Unrealised gain · per holding"
+                aside={current.length ? `buy price known for ${gainRows.length} of ${current.length}` : undefined}
+              >
+                {gainRows.length ? (
+                  <>
+                    <DivergingBars rows={gainRows} currency={cur} name="Gain" />
+                    <DivergingLegend />
+                  </>
+                ) : (
+                  <p className="font-mono text-[11px] text-ink-faint">Add buy prices when recording a snapshot to see gains.</p>
+                )}
+              </ChartCard>
+            </div>
+          )}
+
+          {cmp?.previous && (
+            <ChartCard title={`What moved · value change vs ${formatDate(cmp.previous.as_of)}`} aside="price and quantity changes together">
+              {movedRows.length ? (
+                <>
+                  <DivergingBars rows={movedRows} currency={cur} name="Change" />
+                  <DivergingLegend gain="Up" loss="Down" />
+                </>
+              ) : (
+                <p className="font-mono text-[11px] text-ink-faint">No holding changed value.</p>
+              )}
+            </ChartCard>
+          )}
 
           <section className="flex flex-col gap-3">
             <h2 className="font-mono text-[10px] font-medium uppercase tracking-widest text-ink-muted">
@@ -270,8 +318,10 @@ export default function PortfolioDetailPage() {
                     <th className={th}>Name</th>
                     <th className={th}>Class</th>
                     <th className={cn(th, 'text-right')}>Qty</th>
-                    <th className={cn(th, 'text-right')}>Price</th>
+                    <th className={cn(th, 'text-right')}>Buy price</th>
+                    <th className={cn(th, 'text-right')}>Current price</th>
                     <th className={cn(th, 'text-right')}>Value</th>
+                    <th className={cn(th, 'text-right')}>Gain</th>
                     <th className={cn(th, 'text-right')}>Δ value</th>
                     <th className={cn(th, 'w-40')}>Weight</th>
                   </tr>
@@ -299,8 +349,10 @@ export default function PortfolioDetailPage() {
                         <td className={cn(td, 'text-ink-muted whitespace-normal min-w-[10rem]')}>{h.name ?? '—'}</td>
                         <td className={cn(td, 'text-[10px] uppercase tracking-widest text-ink-muted')}>{ASSET_CLASS_LABELS[h.asset_class] ?? h.asset_class}</td>
                         <td className={cn(td, 'text-right num')}>{sold ? quantity(h.previous_quantity) : quantity(h.quantity)}</td>
-                        <td className={cn(td, 'text-right num')}>{h.price ? money(h.price, cur) : '—'}</td>
+                        <td className={cn(td, 'text-right num')}>{h.buy_price ? money(h.buy_price, cur) : '—'}</td>
+                        <td className={cn(td, 'text-right num')}>{h.current_price ? money(h.current_price, cur) : '—'}</td>
                         <td className={cn(td, 'text-right num font-medium', sold && 'text-ink-muted font-normal')}>{money(h.value, cur)}</td>
+                        <td className={cn(td, 'text-right num', deltaClass(h.gain))}>{h.gain === null ? '—' : signedMoney(h.gain, cur)}</td>
                         <td className={cn(td, 'text-right num', deltaClass(h.value_change))}>{cmp.previous ? signedMoney(h.value_change, cur) : '—'}</td>
                         <td className={td}>
                           <div className="flex items-center gap-2">

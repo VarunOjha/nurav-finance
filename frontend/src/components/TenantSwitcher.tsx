@@ -66,7 +66,7 @@ export function TenantSwitcher() {
             })}
           </ul>
           <Link
-            to="/profile#tenants"
+            to={{ search: '?profile=tenants' }}
             onClick={() => setOpen(false)}
             className="block px-4 py-3 font-mono text-[11px] uppercase tracking-widest text-ink-muted hover:text-ink"
           >

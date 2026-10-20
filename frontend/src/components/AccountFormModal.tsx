@@ -3,9 +3,11 @@ import { Plus, X } from 'lucide-react'
 import { apiErrorMessage } from '../api/client'
 import { useTenant } from '../context/TenantContext'
 import { useAccountMutations } from '../hooks/queries'
+import { parseAmount } from '../lib/amount'
 import { ACCOUNT_TYPE_LABELS, COUNTRIES, CURRENCIES, todayISO } from '../lib/format'
 import type { AccountDetail, AccountInput, AccountType } from '../types/api'
 import { TagPicker } from './TagPicker'
+import { AmountField } from './ui/AmountInput'
 import { Button } from './ui/Button'
 import { FormError, Input, PasswordInput, SectionTitle, Select, TextArea } from './ui/Field'
 import { DateField } from './ui/DateField'
@@ -102,7 +104,8 @@ export function AccountFormModal({ open, onOpenChange, account, onSaved }: Props
   const addRow = (list: 'identifiers' | 'links', label = '') => setForm((f) => ({ ...f, [list]: [...f[list], row(label)] }))
 
   const currencyLocked = editing && account.balance !== null
-  const openingInvalid = !editing && form.opening_amount.trim() !== '' && !DECIMAL.test(form.opening_amount.trim())
+  const openingAmount = parseAmount(form.opening_amount)
+  const openingInvalid = !editing && openingAmount !== '' && !DECIMAL.test(openingAmount)
   const country = form.country === 'OTHER' ? form.country_other.trim().toUpperCase() : form.country
   const countryInvalid = form.country === 'OTHER' && country !== '' && !/^[A-Z]{2}$/.test(country)
   const busy = create.isPending || update.isPending
@@ -144,7 +147,7 @@ export function AccountFormModal({ open, onOpenChange, account, onSaved }: Props
         const body: AccountInput = {
           ...base,
           account_number: orNull(form.account_number),
-          opening_balance: form.opening_amount.trim() ? { amount: form.opening_amount.trim(), as_of: form.opening_as_of || todayISO() } : null,
+          opening_balance: openingAmount ? { amount: openingAmount, as_of: form.opening_as_of || todayISO() } : null,
         }
         saved = await create.mutateAsync(body)
       }
@@ -159,7 +162,7 @@ export function AccountFormModal({ open, onOpenChange, account, onSaved }: Props
     <Modal
       open={open}
       onOpenChange={onOpenChange}
-      size="xl"
+      size="page"
       title={editing ? `Edit account · ${account.name}` : 'Add account'}
       subtitle={
         <>
@@ -266,13 +269,15 @@ export function AccountFormModal({ open, onOpenChange, account, onSaved }: Props
             <section className="flex flex-col gap-4">
               <SectionTitle>03 · Opening balance · optional</SectionTitle>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
-                <Input
+                <AmountField
                   id="a-bal"
                   label={`Balance · ${form.currency}`}
-                  inputMode="decimal"
                   placeholder="0.00"
+                  currency={form.currency}
+                  maxDecimals={4}
+                  allowNegative
                   value={form.opening_amount}
-                  onChange={bind('opening_amount')}
+                  onValueChange={(v) => set('opening_amount', v)}
                   error={openingInvalid ? 'Enter a number' : null}
                 />
                 <DateField id="a-asof" label="As of" max={todayISO()} value={form.opening_as_of} onChange={bind('opening_as_of')} />

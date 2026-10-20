@@ -26,8 +26,8 @@ from schemas.portfolio import (
 from schemas.tenancy import TagRef
 from services import soft_delete
 from services.access import get_account, get_portfolio, get_snapshot, owned_tags
-from services.holdings import ZERO, allocation, compare, holding_value, share, snapshot_total
-from services.ledger import Point, Timeline, add_months, month_end
+from services.holdings import ZERO, allocation, compare, holding_cost, holding_gain, holding_value, share, snapshot_cost, snapshot_total
+from services.ledger import Point, Timeline, add_months, month_end, month_key, months_between
 
 router = APIRouter()
 
@@ -50,7 +50,10 @@ def snapshot_timeline(snapshots: list[Snapshot]) -> Timeline[Decimal]:
 
 
 def _snapshot_summary(s: Snapshot) -> SnapshotSummary:
+    cost, cost_holdings = snapshot_cost(s)
     return SnapshotSummary(
+        cost=cost,
+        cost_holdings=cost_holdings,
         id=s.id,
         as_of=s.as_of,
         note=s.note,
@@ -132,7 +135,10 @@ def consolidated(tenant: Tenant = Depends(get_current_tenant), db: Session = Dep
     """Latest snapshot of every active portfolio, merged per currency (no FX)."""
     portfolios = db.scalars(select(Portfolio).where(Portfolio.tenant_id == tenant.id, Portfolio.closed_on.is_(None))).all()
     snaps = snapshots_by_portfolio(db, [p.id for p in portfolios])
-    last_month_end = month_end(add_months(date.today(), -1))
+    today = date.today()
+    last_month_end = month_end(add_months(today, -1))
+    months = months_between(add_months(today, -11), today)
+    days = [min(month_end(m), today) for m in months]  # same rule as analytics
 
     per_currency: dict[str, dict] = {}
     for p in sorted(portfolios, key=lambda p: p.name):
@@ -141,8 +147,10 @@ def consolidated(tenant: Tenant = Depends(get_current_tenant), db: Session = Dep
         if latest is None:
             continue
         bucket = per_currency.setdefault(
-            p.currency, {"total": ZERO, "previous": ZERO, "has_prev": False, "by_portfolio": [], "by_class": [], "holdings": {}}
+            p.currency, {"total": ZERO, "previous": ZERO, "has_prev": False, "by_portfolio": [], "by_class": [], "holdings": {}, "history": []}
         )
+        points = [timeline.at(d) for d in days]
+        bucket["history"].append({"portfolio": p.name, "values": [pt.value if pt else None for pt in points]})
         bucket["total"] += latest.value
         prior = timeline.at(last_month_end)
         if prior is not None:
@@ -181,6 +189,8 @@ def consolidated(tenant: Tenant = Depends(get_current_tenant), db: Session = Dep
                 "by_portfolio": allocation(b["by_portfolio"]),
                 "by_asset_class": allocation(b["by_class"]),
                 "holdings": holdings,
+                "months": [month_key(m) for m in months],
+                "history": b["history"],  # portfolios were visited in name order
             }
         )
     return Consolidated(currencies=currencies)
@@ -270,7 +280,17 @@ def prefill(
     return SnapshotPrefill(
         based_on=_snapshot_summary(s),
         holdings=[
-            HoldingOut(symbol=h.symbol, name=h.name, asset_class=h.asset_class, quantity=h.quantity, price=h.price, value=holding_value(h))
+            HoldingOut(
+                symbol=h.symbol,
+                name=h.name,
+                asset_class=h.asset_class,
+                quantity=h.quantity,
+                buy_price=h.buy_price,
+                current_price=h.current_price,
+                value=holding_value(h),
+                cost=holding_cost(h),
+                gain=holding_gain(h),
+            )
             for h in s.holdings
         ],
     )
@@ -335,7 +355,8 @@ def create_snapshot(
                 name=(h.name or "").strip() or None,
                 asset_class=h.asset_class,
                 quantity=h.quantity,
-                price=h.price,
+                buy_price=h.buy_price,
+                current_price=h.current_price,
             )
         )
     db.commit()

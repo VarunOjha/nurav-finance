@@ -64,10 +64,13 @@ class Holding(IdMixin, TimestampMixin, SoftDeleteMixin, Base):
     name: Mapped[str | None] = mapped_column(String(160), nullable=True)
     asset_class: Mapped[str] = mapped_column(String(20))
     quantity: Mapped[Decimal] = mapped_column(Numeric(24, 8))
-    price: Mapped[Decimal] = mapped_column(Numeric(20, 6))
+    # Per unit, in the portfolio's currency. buy_price (average cost) is optional:
+    # snapshots recorded before it existed, or where the cost isn't known.
+    buy_price: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    current_price: Mapped[Decimal] = mapped_column(Numeric(20, 6))
 
     snapshot = relationship("Snapshot", back_populates="holdings")
 
     @property
     def value(self) -> Decimal:
-        return self.quantity * self.price
+        return self.quantity * self.current_price

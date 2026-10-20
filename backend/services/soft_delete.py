@@ -24,6 +24,7 @@ from models import (
     Snapshot,
     Tag,
     Tenant,
+    WealthPlan,
 )
 
 
@@ -68,4 +69,5 @@ def delete_tenant(db: Session, tenant_id: uuid.UUID, now: datetime | None = None
         delete_portfolio(db, pid, now)
     for (aid,) in db.execute(select(Account.id).where(Account.tenant_id == tenant_id)):
         delete_account(db, aid, now)
+    _mark(db, WealthPlan, WealthPlan.tenant_id == tenant_id, now=now)
     _mark(db, Tenant, Tenant.id == tenant_id, now=now)

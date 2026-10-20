@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { useLocation } from 'react-router-dom'
 import { Pencil, Trash2 } from 'lucide-react'
 import { apiErrorMessage } from '../api/client'
 import { authApi } from '../api/endpoints'
-import { Button } from '../components/ui/Button'
-import { DateField } from '../components/ui/DateField'
-import { FormError, Input, PasswordInput, Select } from '../components/ui/Field'
-import { ConfirmDialog, Modal } from '../components/ui/Modal'
-import { Chip, Loading, Page, PageHeader, Table, td, th } from '../components/ui/Primitives'
+import { ThemePicker } from './ThemePicker'
+import { Button } from './ui/Button'
+import { DateField } from './ui/DateField'
+import { FormError, Input, PasswordInput, Select } from './ui/Field'
+import { ConfirmDialog, Modal } from './ui/Modal'
+import { Chip, Loading, Table, td, th } from './ui/Primitives'
 import { useAuth } from '../context/AuthContext'
 import { useTenant } from '../context/TenantContext'
 import { useTagMutations, useTags, useTenantMutations } from '../hooks/queries'
@@ -256,10 +256,9 @@ function TenantEditModal({ tenant, onClose }: { tenant: Tenant | null; onClose: 
   )
 }
 
-function TenantsSection() {
+function TenantsSection({ focus }: { focus: boolean }) {
   const { tenants, tenant: selected, selectTenant, isLoading } = useTenant()
   const { create, remove } = useTenantMutations()
-  const location = useLocation()
   const ref = useRef<HTMLElement | null>(null)
   const [adding, setAdding] = useState(false)
   const [name, setName] = useState('')
@@ -270,8 +269,8 @@ function TenantsSection() {
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (location.hash === '#tenants') ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [location.hash])
+    if (focus) ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [focus])
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -583,20 +582,44 @@ function TagsSection() {
   )
 }
 
-export default function ProfilePage() {
+export type ProfileSection = 'tenants' | null
+
+function AppearanceSection() {
+  return (
+    <section className="border border-line p-5 sm:p-6 flex flex-col gap-3 min-w-0">
+      <h2 className={sectionTitle}>Appearance · this browser</h2>
+      <ThemePicker />
+    </section>
+  )
+}
+
+// Page-sized modal over whatever page is open (opened via ?profile in the URL —
+// see AppLayout). Same sections the old /profile page had, plus Appearance.
+export default function ProfileModal({ open, onOpenChange, section }: { open: boolean; onOpenChange: (open: boolean) => void; section: ProfileSection }) {
   const { user } = useAuth()
   return (
-    <Page>
-      <PageHeader
-        title="Profile"
-        subtitle="Your details, the tenants you track, and the tags you use on accounts and portfolios."
-        actions={user ? <span className="font-mono text-xs text-ink-muted">Member since {formatDate(user.created_at.slice(0, 10))}</span> : undefined}
-      />
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-8 items-start">
-        <DetailsSection />
-        <TenantsSection />
+    <Modal
+      open={open}
+      onOpenChange={onOpenChange}
+      size="page"
+      title="Profile"
+      subtitle={
+        <>
+          Your details, the tenants you track, and the tags you use on accounts and portfolios.
+          {user && <> · Member since {formatDate(user.created_at.slice(0, 10))}</>}
+        </>
+      }
+    >
+      <div className="px-5 sm:px-7 py-6 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-8 items-start">
+        <div className="flex flex-col gap-8 min-w-0">
+          <DetailsSection />
+          <AppearanceSection />
+        </div>
+        <div className="flex flex-col gap-10 min-w-0">
+          <TenantsSection focus={open && section === 'tenants'} />
+          <TagsSection />
+        </div>
       </div>
-      <TagsSection />
-    </Page>
+    </Modal>
   )
 }

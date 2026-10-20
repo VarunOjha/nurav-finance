@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useMemo } from 'react'
+import { useThemeVersion } from '../../lib/theme'
 
 // Recharts needs concrete colour strings, so read the palette's CSS variables
-// (index.css) and re-read them when the OS switches light/dark.
+// (index.css) and re-read them whenever the theme (or the OS, under System) changes.
 export interface ChartTheme {
   ink: string
   inkMuted: string
@@ -10,7 +11,12 @@ export interface ChartTheme {
   paperWarm: string
   line: string
   error: string
-  /** Distinct series colours, ink-first, monochrome-friendly. */
+  /**
+   * Categorical colours in fixed order (blue, orange, aqua, yellow, magenta,
+   * green, violet, red). Assign by entity, never by rank, and never cycle: fold
+   * anything past 8 into "Other". Several are under 3:1 on light surfaces, so
+   * every chart using them needs a legend or direct labels.
+   */
   series: string[]
 }
 
@@ -20,30 +26,22 @@ function cssVar(name: string): string {
 }
 
 function read(): ChartTheme {
-  const ink = cssVar('ink')
-  const inkMuted = cssVar('ink-muted')
-  const inkFaint = cssVar('ink-faint')
   return {
-    ink,
-    inkMuted,
-    inkFaint,
+    ink: cssVar('ink'),
+    inkMuted: cssVar('ink-muted'),
+    inkFaint: cssVar('ink-faint'),
     paper: cssVar('paper'),
     paperWarm: cssVar('paper-warm'),
     line: cssVar('line'),
     error: cssVar('error'),
-    series: [ink, inkMuted, inkFaint, cssVar('line')],
+    series: Array.from({ length: 8 }, (_, i) => cssVar(`series-${i + 1}`)),
   }
 }
 
 export function useChartTheme(): ChartTheme {
-  const [theme, setTheme] = useState<ChartTheme>(read)
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const onChange = () => setTheme(read())
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
-  }, [])
-  return theme
+  const version = useThemeVersion()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(read, [version])
 }
 
 export const axisTick = { fontFamily: '"JetBrains Mono", monospace', fontSize: 10 }

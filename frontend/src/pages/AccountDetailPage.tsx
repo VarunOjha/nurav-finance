@@ -7,11 +7,13 @@ import { accountsApi } from '../api/endpoints'
 import { AccountFormModal } from '../components/AccountFormModal'
 import { axisTick, useChartTheme } from '../components/charts/chartTheme'
 import { Button } from '../components/ui/Button'
-import { FormError, Input, TextArea } from '../components/ui/Field'
+import { AmountField } from '../components/ui/AmountInput'
+import { FormError, TextArea } from '../components/ui/Field'
 import { DateField } from '../components/ui/DateField'
 import { ConfirmDialog } from '../components/ui/Modal'
 import { Chip, Empty, ErrorBox, Loading, Page, PageHeader, StatCard, Table, td, th } from '../components/ui/Primitives'
 import { useAccount, useAccountMutations, useBalances } from '../hooks/queries'
+import { parseAmount } from '../lib/amount'
 import { cn } from '../lib/cn'
 import {
   ACCOUNT_TYPE_LABELS,
@@ -177,7 +179,7 @@ function BalanceChart({ history, currency }: { history: BalanceHistory; currency
               labelFormatter={(m) => monthLabel(String(m), true)}
               formatter={(v) => [money(v as number, currency), 'Balance']}
             />
-            <Line type="monotone" dataKey="balance" stroke={theme.ink} strokeWidth={1.5} dot={false} connectNulls={false} isAnimationActive={false} />
+            <Line type="monotone" dataKey="balance" stroke={theme.series[0]} strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -275,7 +277,7 @@ function RecordBalance({ account }: { account: AccountDetail }) {
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
 
-  const trimmed = amount.replace(/,/g, '').trim()
+  const trimmed = parseAmount(amount)
   const invalid = trimmed !== '' && !DECIMAL.test(trimmed)
 
   const submit = (e: FormEvent) => {
@@ -300,13 +302,15 @@ function RecordBalance({ account }: { account: AccountDetail }) {
   return (
     <form id="record" onSubmit={submit} noValidate className="border border-ink p-5 flex flex-col gap-4 scroll-mt-6">
       <h2 className="font-mono text-[10px] font-medium uppercase tracking-widest text-ink">Record balance</h2>
-      <Input
+      <AmountField
         id="rb-amount"
         label={`Balance · ${account.currency}`}
-        inputMode="decimal"
         placeholder="0.00"
+        currency={account.currency}
+        maxDecimals={4}
+        allowNegative
         value={amount}
-        onChange={(e) => setAmount(e.target.value)}
+        onValueChange={setAmount}
         error={invalid ? 'Enter a number' : null}
       />
       <DateField

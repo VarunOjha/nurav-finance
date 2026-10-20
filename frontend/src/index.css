@@ -2,9 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Palette as RGB triplets (consumed by tailwind.config.ts). Light values are
-   Nurav Docs'; dark mode follows the OS. */
-:root {
+/* Palette as RGB triplets (consumed by tailwind.config.ts). Themes are picked in
+   the user menu (lib/theme.ts sets <html data-theme data-mode>); with no
+   data-theme yet, "System" applies: Paper or Ink by the OS setting.
+   --series-1..8 are the chart categories in fixed order (blue, orange, aqua,
+   yellow, magenta, green, violet, red), validated for colour-blind separation
+   against every theme's surface; dark themes use the dark-stepped set. */
+:root,
+:root[data-theme='paper'] {
   --paper: 247 246 241;      /* #F7F6F1 */
   --paper-warm: 237 236 234; /* #EDECEA */
   --ink: 26 25 24;           /* #1A1918 */
@@ -12,11 +17,73 @@
   --ink-faint: 155 152 144;  /* #9B9890 */
   --line: 216 214 207;       /* #D8D6CF */
   --error: 185 28 28;        /* #B91C1C */
+  --series-1: 42 120 214;
+  --series-2: 235 104 52;
+  --series-3: 27 175 122;
+  --series-4: 237 161 0;
+  --series-5: 232 123 164;
+  --series-6: 0 131 0;
+  --series-7: 98 80 214;
+  --series-8: 227 73 72;
   color-scheme: light;
 }
 
+:root[data-theme='fog'] {
+  --paper: 238 241 244;      /* #EEF1F4 cool grey */
+  --paper-warm: 226 230 235;
+  --ink: 30 36 48;
+  --ink-muted: 91 100 116;
+  --ink-faint: 138 147 163;
+  --line: 205 211 219;
+  --error: 185 28 28;
+}
+
+:root[data-theme='linen'] {
+  --paper: 244 236 221;      /* #F4ECDD warm cream */
+  --paper-warm: 234 223 203;
+  --ink: 58 46 34;
+  --ink-muted: 122 106 85;
+  --ink-faint: 168 151 127;
+  --line: 217 203 179;
+  --error: 168 40 30;
+}
+
+/* Dark themes share the dark-stepped series. */
+:root[data-mode='dark'] {
+  --series-1: 57 135 229;
+  --series-2: 217 89 38;
+  --series-3: 25 158 112;
+  --series-4: 201 133 0;
+  --series-5: 213 81 129;
+  --series-6: 0 131 0;
+  --series-7: 144 133 233;
+  --series-8: 230 103 103;
+  color-scheme: dark;
+}
+
+:root[data-theme='dusk'] {
+  --paper: 43 47 54;         /* #2B2F36 soft slate — lighter than Ink */
+  --paper-warm: 52 57 67;
+  --ink: 230 232 236;
+  --ink-muted: 169 175 186;
+  --ink-faint: 125 132 146;
+  --line: 71 77 89;
+  --error: 248 113 113;
+}
+
+:root[data-theme='ink'] {
+  --paper: 22 21 20;
+  --paper-warm: 35 34 32;
+  --ink: 237 236 234;
+  --ink-muted: 163 160 153;
+  --ink-faint: 112 109 102;
+  --line: 58 57 54;
+  --error: 248 113 113;
+}
+
+/* Before the theme script runs (or without JS): System → Ink on a dark OS. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     --paper: 22 21 20;
     --paper-warm: 35 34 32;
     --ink: 237 236 234;
@@ -24,6 +91,14 @@
     --ink-faint: 112 109 102;
     --line: 58 57 54;
     --error: 248 113 113;
+    --series-1: 57 135 229;
+    --series-2: 217 89 38;
+    --series-3: 25 158 112;
+    --series-4: 201 133 0;
+    --series-5: 213 81 129;
+    --series-6: 0 131 0;
+    --series-7: 144 133 233;
+    --series-8: 230 103 103;
     color-scheme: dark;
   }
 }
@@ -45,6 +120,42 @@ body {
 .num { font-variant-numeric: tabular-nums; }
 
 input[type='date']::-webkit-calendar-picker-indicator { opacity: 0.6; cursor: pointer; }
+:root[data-mode='dark'] input[type='date']::-webkit-calendar-picker-indicator { filter: invert(1); }
 @media (prefers-color-scheme: dark) {
-  input[type='date']::-webkit-calendar-picker-indicator { filter: invert(1); }
+  :root:not([data-theme]) input[type='date']::-webkit-calendar-picker-indicator { filter: invert(1); }
+}
+
+/* Print (Wealth Agent reports, and any page): A4, Paper palette whatever the
+   theme, no app chrome, and the shell's fixed-height scroller unrolled so the
+   whole page prints. Sections marked .break-inside-avoid stay on one page. */
+@media print {
+  @page { size: A4; margin: 12mm; }
+  :root, :root[data-theme], :root[data-mode='dark'] {
+    --paper: 255 255 255;
+    --paper-warm: 237 236 234;
+    --ink: 26 25 24;
+    --ink-muted: 85 83 77;
+    --ink-faint: 120 117 110;
+    --line: 189 186 178;
+    --series-1: 42 120 214;
+    --series-2: 235 104 52;
+    --series-3: 27 175 122;
+    --series-4: 237 161 0;
+    --series-5: 232 123 164;
+    --series-6: 0 131 0;
+    --series-7: 98 80 214;
+    --series-8: 227 73 72;
+    color-scheme: light;
+  }
+  html, body, #root { height: auto; }
+  #root > .h-screen { height: auto; display: block; }
+  #root > .h-screen > header,
+  #root > .h-screen > footer,
+  #root [role='navigation'] { display: none !important; }
+  #root > .h-screen > .flex-1 { overflow: visible; }
+  #root main { height: auto; overflow: visible; }
+  /* The agent page's split panes scroll inside the window; printed, the report unrolls. */
+  #root main .h-full, #root main .min-h-0, #root main .overflow-y-auto { height: auto !important; min-height: 0; overflow: visible !important; }
+  .break-inside-avoid { break-inside: avoid; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }

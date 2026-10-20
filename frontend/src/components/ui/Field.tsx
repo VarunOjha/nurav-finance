@@ -3,7 +3,7 @@ import { Eye, EyeOff } from 'lucide-react'
 import { cn } from '../../lib/cn'
 
 // Underlined inputs with tiny uppercase labels — the Nurav Docs form style.
-const CONTROL =
+export const CONTROL =
   'w-full bg-transparent border-0 border-b border-line focus:border-ink focus:outline-none font-mono text-[13px] text-ink py-2 placeholder:text-ink-faint disabled:text-ink-faint'
 
 export function Label({ htmlFor, children }: { htmlFor?: string; children: ReactNode }) {

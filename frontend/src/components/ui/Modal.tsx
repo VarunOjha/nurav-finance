@@ -8,6 +8,8 @@ const SIZE = {
   md: 'max-w-md',
   lg: 'max-w-2xl',
   xl: 'max-w-5xl',
+  // Nearly the whole window — for forms that are really pages (profile, add account).
+  page: 'max-w-7xl sm:w-[96vw] h-[92vh]',
 } as const
 
 interface ModalProps {

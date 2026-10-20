@@ -161,8 +161,11 @@ export interface Holding {
   name: string | null
   asset_class: AssetClass
   quantity: Decimal
-  price: Decimal
+  buy_price: Decimal | null
+  current_price: Decimal
   value: Decimal
+  cost: Decimal | null
+  gain: Decimal | null
 }
 
 export interface HoldingInput {
@@ -170,7 +173,8 @@ export interface HoldingInput {
   name: string | null
   asset_class: AssetClass
   quantity: string
-  price: string
+  buy_price: string | null
+  current_price: string
 }
 
 export interface SnapshotSummary {
@@ -180,6 +184,8 @@ export interface SnapshotSummary {
   recorded_at: ISODateTime
   total: Decimal
   holdings_count: number
+  cost: Decimal | null // Σ quantity × buy price over holdings that have one
+  cost_holdings: number
 }
 
 export interface HoldingDiff {
@@ -190,8 +196,11 @@ export interface HoldingDiff {
   quantity: Decimal | null
   previous_quantity: Decimal | null
   quantity_change: Decimal | null
-  price: Decimal | null
+  buy_price: Decimal | null
+  current_price: Decimal | null
   value: Decimal
+  cost: Decimal | null
+  gain: Decimal | null
   previous_value: Decimal
   value_change: Decimal
   weight: Decimal
@@ -234,6 +243,8 @@ export interface CurrencyConsolidation {
   by_portfolio: AllocationSlice[]
   by_asset_class: AllocationSlice[]
   holdings: ConsolidatedHolding[]
+  months: string[] // YYYY-MM, last 12; current month as of today
+  history: { portfolio: string; values: Series }[] // sorted by name
 }
 
 export type Series = (Decimal | null)[]
@@ -259,6 +270,23 @@ export interface CurrencyAllocation {
 
 export type AnalyticsRange = '6m' | '1y' | '3y' | 'all'
 
+export interface TopAsset {
+  kind: 'account' | 'holding'
+  name: string
+  symbol: string | null
+  /** Account type, or the holding's asset class. */
+  group: string
+  /** Portfolios holding this symbol; empty for accounts. */
+  held_in: string[]
+  value: Decimal
+}
+
+export interface CurrencyTopAssets {
+  currency: string
+  /** Every positive asset held today, largest first. */
+  assets: TopAsset[]
+}
+
 export interface Overview {
   months: string[]
   currencies: CurrencySeries[]
@@ -268,6 +296,7 @@ export interface Overview {
     by_asset_class: CurrencyAllocation[]
     by_tag: CurrencyAllocation[]
   }
+  top_assets: CurrencyTopAssets[]
   timeline: {
     date: ISODate
     kind: 'account_opened' | 'account_closed' | 'portfolio_opened' | 'portfolio_closed'
@@ -275,3 +304,245 @@ export interface Overview {
     currency: string
   }[]
 }
+
+// ── Wealth Agent (backend/schemas/wealth.py, services/wealth, services/agent) ─
+
+/** The one number a pot solves for. */
+export type SolveFor = 'time' | 'amount' | 'rate' | 'contribution'
+export type RiskAppetite = 'cautious' | 'balanced' | 'growth'
+
+export interface WealthPrefs {
+  solve_for: SolveFor | null
+  horizon_years: number | null
+  horizon_age: number | null
+  risk_appetite: RiskAppetite | null
+}
+
+export interface Contribution {
+  amount: number
+  per: 'month' | 'year'
+  /** Years it runs from now; null = the whole plan. */
+  years: number | null
+  step_up: number
+}
+
+export interface SegmentParams {
+  name: string
+  share: number | null
+  amount: number | null
+  rate: number | null
+  target: number | null
+  contribution: Contribution | null
+}
+
+export interface PotParams {
+  currency: string
+  solve_for: SolveFor
+  start_override: number | null
+  exclude: string[]
+  target: number | null
+  target_basis: 'today' | 'nominal'
+  horizon_years: number | null
+  horizon_age: number | null
+  rate: number | null
+  rate_options: number[] | null
+  contribution: Contribution | null
+  one_offs: { year: number; amount: number; note: string }[]
+  segments: SegmentParams[]
+  monthly_spending: number | null
+}
+
+export interface WealthParams {
+  title: string
+  pots: PotParams[]
+  inflation: number
+  compounding: 12 | 4 | 1
+  risk_appetite: RiskAppetite | null
+  defaults: string[]
+}
+
+/** A pot as the server resolved it against today's balances. */
+export interface DraftPot {
+  currency: string
+  start: number
+  actual_start: number
+  items: { alias: string; name: string; kind: 'account' | 'portfolio'; value: number }[]
+  excluded: { alias: string; name: string; value: number }[]
+  horizon_years: number | null
+  target: number | null
+  segments: { name: string; start: number }[]
+  rate_options: number[] | null
+}
+
+/** A validated, resolved draft as the person approves it. Signed by the server; send it back unchanged. */
+export interface WealthDraft {
+  v: number
+  id: string
+  params: WealthParams
+  as_of: ISODate
+  birth_date: ISODate | null
+  pots: DraftPot[]
+  warnings: string[]
+  sig: string
+}
+
+export type SolveStatus = 'ok' | 'already' | 'unreachable'
+
+export interface PotAnswer {
+  status: SolveStatus
+  /** amount: the end amount; rate: % a year; contribution: per `per`. */
+  value?: number | null
+  real?: number
+  /** time: months from today. */
+  months?: number | null
+  per?: 'month' | 'year'
+}
+
+export interface PotLine {
+  label: string
+  rate: number | null
+  shift: number | null
+  /** Total per plan year, 0..horizon_years. */
+  total: number[]
+  end: number
+  /** When this line reaches the target (looking up to 60 years). */
+  fi_months: number | null
+}
+
+export interface SegmentResult {
+  name: string
+  start: number
+  rate: number | null
+  target: number | null
+  /** Months until the segment reaches its own target on its own. */
+  months: number | null
+  end: number | null
+  target_end: number | null
+  reaches?: boolean
+  required?: { status: SolveStatus; value: number | null; per: 'month' | 'year'; extra?: boolean }
+  runway_months?: number
+}
+
+export interface PotResult {
+  currency: string
+  solve_for: SolveFor
+  start: number
+  target: number | null
+  target_basis: 'today' | 'nominal'
+  plan_years: number | null
+  /** How many years the chart and tables run. */
+  horizon_years: number
+  /** The date segments are checked at: the plan's end, or when the pot reaches its target. */
+  ref_years: number | null
+  answer: PotAnswer
+  fi_months: number | null
+  flat_rate: number | null
+  amounts: Record<string, number>
+  main: {
+    buckets: { key: string; values: number[]; added: number[] }[]
+    total: number[]
+    total_real: number[]
+    target: number[] | null
+    fi_months: number | null
+  }
+  lines: PotLine[]
+  grid_years: number[]
+  contribution_effect:
+    | { kind: 'time'; with: number | null; without: number | null }
+    | { kind: 'amount'; with: number; without: number }
+    | { kind: 'rate'; with: PotAnswer; without: PotAnswer }
+    | null
+  rate_by_horizon: { years: number; status: SolveStatus; value: number | null }[] | null
+  contribution_by_rate: { label: string; rate: number; status: SolveStatus; value: number | null }[] | null
+  segments: SegmentResult[] | null
+}
+
+export interface RiskRead {
+  currency: string
+  net_worth: number
+  currencies: { currency: string; count: number; total: number }[]
+  retirement_share: number | null
+  cash_share: number | null
+  cash_months?: number
+  holdings?: {
+    count: number
+    value: number
+    top: { symbol: string; share: number; share_of_net_worth: number | null }
+    top3_share: number
+    asset_classes: { asset_class: string; share: number }[]
+  }
+}
+
+export interface Narrative {
+  headline: string
+  insights: string[]
+  watch_outs: string[]
+  recommendations: string[]
+  glossary: { term: string; meaning: string }[]
+  chat_summary: string
+  follow_ups: string[]
+}
+
+/** One run of an approved draft: what the report draws. */
+export interface WealthVersion {
+  n?: number
+  engine: string
+  draft: WealthDraft
+  pots: PotResult[]
+  /** By currency. */
+  risk: Record<string, RiskRead>
+  figures: Record<string, string>
+  narrative: Narrative | null
+}
+
+export interface WealthPlanSummary {
+  id: string
+  name: string
+  as_of: ISODate
+  created_at: ISODateTime
+  pots: { currency: string; solve_for: SolveFor; start: number; answer: string }[]
+}
+
+export interface WealthPlan {
+  id: string
+  name: string
+  as_of: ISODate
+  created_at: ISODateTime
+  model: string
+  report: WealthVersion
+}
+
+export interface AgentStatus {
+  enabled: boolean
+  fake: boolean
+  model: string
+  stt_model: string
+  cap_usd: number
+  spent_today_usd: number
+}
+
+export interface AgentSnapshot {
+  as_of: ISODate
+  age: number | null
+  currencies: { currency: string; count: number; total: number }[]
+  items: { alias: string; kind: 'account' | 'portfolio'; type: string; currency: string; value: number | null; counted_in?: string; linked_account?: string; asset_mix?: Record<string, number> }[]
+}
+
+/** The conversation as the browser keeps it (OpenAI chat format, aliases only). */
+export interface ChatMessage {
+  role: 'user' | 'assistant' | 'tool'
+  content?: string | null
+  tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[]
+  tool_call_id?: string
+}
+
+export type AgentEvent =
+  | { type: 'aliases'; map: Record<string, string> }
+  | { type: 'text'; delta: string }
+  | { type: 'status'; text: string }
+  | { type: 'draft'; draft: WealthDraft }
+  | { type: 'version'; version: WealthVersion }
+  | { type: 'report'; n: number; narrative: Narrative }
+  | { type: 'usage'; cost: number; chat?: number; today: number; cap: number }
+  | { type: 'error'; message: string }
+  | { type: 'done'; messages: ChatMessage[] }

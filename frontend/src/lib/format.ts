@@ -19,9 +19,7 @@ function formatter(currency: string, compact: boolean): Intl.NumberFormat {
       style: 'currency',
       currency,
       currencyDisplay: 'narrowSymbol',
-      ...(compact
-        ? { notation: 'compact', maximumFractionDigits: 1 }
-        : { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      ...(compact ? { notation: 'compact', maximumFractionDigits: 1 } : { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
     })
     formatters.set(key, f)
   }
@@ -39,11 +37,11 @@ export function money(value: string | number | null | undefined, currency: strin
 }
 
 /** "+$1,204.10" / "−$2,000.00" (true minus sign) / "—". */
-export function signedMoney(value: string | number | null | undefined, currency: string): string {
+export function signedMoney(value: string | number | null | undefined, currency: string, opts: { compact?: boolean } = {}): string {
   const n = toNumber(value)
   if (n === null) return '—'
-  if (n === 0) return money(0, currency)
-  const body = money(Math.abs(n), currency)
+  if (n === 0) return money(0, currency, opts)
+  const body = money(Math.abs(n), currency, opts)
   return n > 0 ? `+${body}` : `−${body}`
 }
 

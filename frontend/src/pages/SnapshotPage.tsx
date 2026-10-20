@@ -2,12 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { X } from 'lucide-react'
 import { apiErrorMessage } from '../api/client'
+import { HoldingsCsvModal } from '../components/HoldingsCsvModal'
+import { AmountInput } from '../components/ui/AmountInput'
 import { Button } from '../components/ui/Button'
 import { FormError, TextArea } from '../components/ui/Field'
 import { DateField } from '../components/ui/DateField'
 import { Chip, ErrorBox, Loading, Page, PageHeader, Table, td, th } from '../components/ui/Primitives'
 import { usePortfolio, usePortfolioMutations, useSnapshotPrefill } from '../hooks/queries'
+import { parseAmount, trimDecimal } from '../lib/amount'
 import { cn } from '../lib/cn'
+import type { CsvHolding } from '../lib/holdingsCsv'
 import { ASSET_CLASS_LABELS, arrow, deltaClass, formatDate, money, quantity, signedMoney, todayISO, toNumber } from '../lib/format'
 import type { AssetClass, Holding, HoldingInput } from '../types/api'
 
@@ -17,22 +21,26 @@ interface Row {
   name: string
   asset_class: AssetClass
   quantity: string
-  price: string
+  buy_price: string
+  current_price: string
 }
 
 const cellInput =
   'w-full bg-transparent border-0 border-b border-line focus:border-ink focus:outline-none font-mono text-xs text-ink py-1.5 placeholder:text-ink-faint'
 
 let nextKey = 1
-const blankRow = (): Row => ({ key: nextKey++, symbol: '', name: '', asset_class: 'stock', quantity: '', price: '' })
+const blankRow = (): Row => ({ key: nextKey++, symbol: '', name: '', asset_class: 'stock', quantity: '', buy_price: '', current_price: '' })
 const fromHolding = (h: Holding): Row => ({
   key: nextKey++,
   symbol: h.symbol,
   name: h.name ?? '',
   asset_class: h.asset_class,
-  quantity: String(toNumber(h.quantity) ?? ''),
-  price: String(toNumber(h.price) ?? ''),
+  quantity: trimDecimal(h.quantity),
+  buy_price: trimDecimal(h.buy_price),
+  current_price: trimDecimal(h.current_price),
 })
+
+const fromCsv = (h: CsvHolding): Row => ({ key: nextKey++, symbol: h.symbol, name: h.name ?? '', asset_class: h.asset_class, quantity: h.quantity, buy_price: h.buy_price ?? '', current_price: h.current_price })
 
 const num = (s: string): number | null => {
   if (!s.trim()) return null
@@ -55,6 +63,7 @@ export default function SnapshotPage() {
   const [dirty, setDirty] = useState(false)
   const [seededFrom, setSeededFrom] = useState<string | null | undefined>(undefined) // snapshot id or null (none)
   const [error, setError] = useState<string | null>(null)
+  const [csvOpen, setCsvOpen] = useState(false)
   const lastPrefill = useRef<typeof prefill.data>()
 
   const base = prefill.data
@@ -83,7 +92,7 @@ export default function SnapshotPage() {
 
   const computed = rows.map((r) => {
     const q = num(r.quantity)
-    const p = num(r.price)
+    const p = num(r.current_price)
     const value = q !== null && p !== null ? q * p : null
     const sym = r.symbol.trim().toUpperCase()
     const prev = sym ? baseBySymbol.get(sym) : undefined
@@ -128,7 +137,7 @@ export default function SnapshotPage() {
     setError(null)
     if (!/^\d{4}-\d{2}-\d{2}$/.test(asOf)) return setError('Pick an "as of" date')
     if (asOf > today) return setError('The date cannot be in the future')
-    const filled = rows.filter((r) => r.symbol.trim() || r.quantity.trim() || r.price.trim())
+    const filled = rows.filter((r) => r.symbol.trim() || r.quantity.trim() || r.buy_price.trim() || r.current_price.trim())
     if (filled.length === 0) return setError('Add at least one holding')
     const holdings: HoldingInput[] = []
     const seen = new Set<string>()
@@ -138,10 +147,20 @@ export default function SnapshotPage() {
       if (seen.has(sym)) return setError(`${sym} appears twice — each symbol once per snapshot`)
       seen.add(sym)
       const q = num(r.quantity)
-      const pr = num(r.price)
+      const buy = num(r.buy_price)
+      const pr = num(r.current_price)
       if (q === null || q <= 0) return setError(`${sym}: quantity must be a number greater than 0`)
-      if (pr === null || pr < 0) return setError(`${sym}: price must be a number (0 or more)`)
-      holdings.push({ symbol: sym, name: r.name.trim() || null, asset_class: r.asset_class, quantity: r.quantity.replace(/,/g, '').trim(), price: r.price.replace(/,/g, '').trim() })
+      if (r.buy_price.trim() && (buy === null || buy < 0)) return setError(`${sym}: buy price must be a number (0 or more), or left blank`)
+      if (pr === null || pr < 0) return setError(`${sym}: current price must be a number (0 or more)`)
+      const clean = parseAmount
+      holdings.push({
+        symbol: sym,
+        name: r.name.trim() || null,
+        asset_class: r.asset_class,
+        quantity: clean(r.quantity),
+        buy_price: clean(r.buy_price) || null,
+        current_price: clean(r.current_price),
+      })
     }
     try {
       await createSnapshot.mutateAsync({ id: p.id, as_of: asOf, note: note.trim() || null, holdings })
@@ -175,7 +194,7 @@ export default function SnapshotPage() {
             'Looking for the previous snapshot…'
           ) : base?.based_on ? (
             <span>
-              Starting from the <span className="text-ink">{formatDate(base.based_on.as_of)}</span> snapshot — edit quantities and prices
+              Starting from the <span className="text-ink">{formatDate(base.based_on.as_of)}</span> snapshot — edit quantities and current prices
             </span>
           ) : base ? (
             <span>First snapshot before this date — add holdings</span>
@@ -195,7 +214,8 @@ export default function SnapshotPage() {
             <th className={th}>Name</th>
             <th className={th}>Class</th>
             <th className={cn(th, 'text-right')}>Quantity</th>
-            <th className={cn(th, 'text-right')}>Price · {cur}</th>
+            <th className={cn(th, 'text-right')}>Buy price · {cur}</th>
+            <th className={cn(th, 'text-right')}>Current price · {cur}</th>
             <th className={cn(th, 'text-right')}>Value</th>
             <th className={cn(th, 'text-right')}>Δ vs base</th>
             <th className={th}>
@@ -233,10 +253,29 @@ export default function SnapshotPage() {
                 </select>
               </td>
               <td className={cn(td, 'min-w-[6rem]')}>
-                <input aria-label="Quantity" inputMode="decimal" className={cn(cellInput, 'text-right num')} value={r.quantity} onChange={(e) => edit(r.key, { quantity: e.target.value })} placeholder="0" />
+                <AmountInput aria-label="Quantity" maxDecimals={8} className={cn(cellInput, 'text-right num')} value={r.quantity} onValueChange={(v) => edit(r.key, { quantity: v })} placeholder="0" />
               </td>
               <td className={cn(td, 'min-w-[6rem]')}>
-                <input aria-label="Price" inputMode="decimal" className={cn(cellInput, 'text-right num')} value={r.price} onChange={(e) => edit(r.key, { price: e.target.value })} placeholder="0.00" />
+                <AmountInput
+                  aria-label="Buy price"
+                  currency={cur}
+                  maxDecimals={6}
+                  className={cn(cellInput, 'text-right num')}
+                  value={r.buy_price}
+                  onValueChange={(v) => edit(r.key, { buy_price: v })}
+                  placeholder="optional"
+                />
+              </td>
+              <td className={cn(td, 'min-w-[6rem]')}>
+                <AmountInput
+                  aria-label="Current price"
+                  currency={cur}
+                  maxDecimals={6}
+                  className={cn(cellInput, 'text-right num')}
+                  value={r.current_price}
+                  onValueChange={(v) => edit(r.key, { current_price: v })}
+                  placeholder="0.00"
+                />
               </td>
               <td className={cn(td, 'text-right num font-medium')}>{value === null ? '—' : money(value, cur)}</td>
               <td className={cn(td, 'text-right num', deltaClass(delta))}>{delta === null || !base?.based_on ? '—' : signedMoney(delta, cur)}</td>
@@ -271,7 +310,8 @@ export default function SnapshotPage() {
               <td className={cn(td, 'text-ink-muted')}>{h.name ?? '—'}</td>
               <td className={cn(td, 'text-[10px] uppercase tracking-widest text-ink-muted')}>{ASSET_CLASS_LABELS[h.asset_class] ?? h.asset_class}</td>
               <td className={cn(td, 'text-right num text-ink-muted')}>{quantity(h.quantity)}</td>
-              <td className={cn(td, 'text-right num text-ink-muted')}>{money(h.price, cur)}</td>
+              <td className={cn(td, 'text-right num text-ink-muted')}>{h.buy_price === null ? '—' : money(h.buy_price, cur)}</td>
+              <td className={cn(td, 'text-right num text-ink-muted')}>{money(h.current_price, cur)}</td>
               <td className={cn(td, 'text-right num text-ink-muted')}>{money(0, cur)}</td>
               <td className={cn(td, 'text-right num text-error')}>{signedMoney(-(toNumber(h.value) ?? 0), cur)}</td>
               <td className={cn(td, 'text-right')}>
@@ -288,15 +328,20 @@ export default function SnapshotPage() {
       </Table>
 
       <div className="flex flex-wrap items-start justify-between gap-6">
-        <Button
-          variant="secondary"
-          onClick={() => {
-            setDirty(true)
-            setRows((rs) => [...rs, blankRow()])
-          }}
-        >
-          + Add holding
-        </Button>
+        <div className="flex flex-wrap items-center gap-5">
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setDirty(true)
+              setRows((rs) => [...rs, blankRow()])
+            }}
+          >
+            + Add holding
+          </Button>
+          <Button variant="secondary" onClick={() => setCsvOpen(true)}>
+            Paste CSV
+          </Button>
+        </div>
         <dl className="border border-line p-4 grid grid-cols-2 gap-x-8 gap-y-2 font-mono text-xs min-w-[18rem]">
           <dt className="text-[10px] uppercase tracking-widest text-ink-muted">Total</dt>
           <dd className="text-right num font-bold text-ink">{money(total, cur)}</dd>
@@ -321,6 +366,18 @@ export default function SnapshotPage() {
           Save snapshot
         </Button>
       </div>
+
+      <HoldingsCsvModal
+        open={csvOpen}
+        onOpenChange={setCsvOpen}
+        currency={cur}
+        onAccept={(holdings) => {
+          setDirty(true)
+          setError(null)
+          setRows(holdings.map(fromCsv))
+          setSeededFrom((s) => (s === undefined ? null : s)) // a prefill arriving later must not overwrite the import
+        }}
+      />
     </Page>
   )
 }

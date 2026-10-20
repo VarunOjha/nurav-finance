@@ -2,9 +2,9 @@
 // switching tenants swaps every cache entry at once. Mutations invalidate
 // (no optimistic updates), like Nurav Docs.
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { accountsApi, analyticsApi, portfoliosApi, tagsApi, tenantsApi } from '../api/endpoints'
+import { accountsApi, agentApi, analyticsApi, portfoliosApi, tagsApi, tenantsApi, wealthApi } from '../api/endpoints'
 import { tenantsKey, useTenant } from '../context/TenantContext'
-import type { AccountInput, AnalyticsRange, HoldingInput, PortfolioInput } from '../types/api'
+import type { AccountInput, AnalyticsRange, HoldingInput, Narrative, PortfolioInput, WealthDraft } from '../types/api'
 
 const keys = {
   tags: ['tags'] as const,
@@ -18,6 +18,11 @@ const keys = {
   snapshot: (t: string | null, id: string, sid: string, cmp: string | null) => ['t', t, 'portfolios', id, 'snapshots', sid, cmp] as const,
   prefill: (t: string | null, id: string, asOf: string) => ['t', t, 'portfolios', id, 'prefill', asOf] as const,
   analytics: (t: string | null, range: AnalyticsRange) => ['t', t, 'analytics', range] as const,
+  // Under the tenant key, so balance and snapshot changes refresh what the agent sees.
+  agentStatus: (t: string | null) => ['t', t, 'agent', 'status'] as const,
+  agentSnapshot: (t: string | null) => ['t', t, 'agent', 'snapshot'] as const,
+  wealthPlans: (t: string | null) => ['t', t, 'wealth', 'plans'] as const,
+  wealthPlan: (t: string | null, id: string) => ['t', t, 'wealth', 'plans', id] as const,
 }
 
 /** Everything derived from a tenant's data, plus the counts shown on tenants/tags. */
@@ -156,4 +161,40 @@ export function usePortfolioMutations() {
 export function useOverview(range: AnalyticsRange) {
   const { tenantId, enabled } = useScoped()
   return useQuery({ queryKey: keys.analytics(tenantId, range), queryFn: () => analyticsApi.overview(range), enabled })
+}
+
+// ── Wealth Agent ─────────────────────────────────────────────────────────────
+
+export function useAgentStatus() {
+  const { tenantId, enabled } = useScoped()
+  return useQuery({ queryKey: keys.agentStatus(tenantId), queryFn: agentApi.status, enabled })
+}
+
+export function useAgentSnapshot(on: boolean) {
+  const { tenantId, enabled } = useScoped()
+  return useQuery({ queryKey: keys.agentSnapshot(tenantId), queryFn: agentApi.snapshot, enabled: enabled && on })
+}
+
+export function useWealthPlans() {
+  const { tenantId, enabled } = useScoped()
+  return useQuery({ queryKey: keys.wealthPlans(tenantId), queryFn: wealthApi.plans, enabled })
+}
+
+export function useWealthPlan(id: string | null) {
+  const { tenantId, enabled } = useScoped()
+  return useQuery({ queryKey: keys.wealthPlan(tenantId, id ?? ''), queryFn: () => wealthApi.plan(id as string), enabled: enabled && !!id })
+}
+
+export function useWealthMutations() {
+  const qc = useQueryClient()
+  const { tenantId } = useTenant()
+  const done = () => qc.invalidateQueries({ queryKey: ['t', tenantId, 'wealth'] })
+  return {
+    save: useMutation({
+      mutationFn: (body: { name: string; draft: WealthDraft; narrative: Narrative | null }) => wealthApi.save(body),
+      onSuccess: done,
+    }),
+    rename: useMutation({ mutationFn: (v: { id: string; name: string }) => wealthApi.rename(v.id, v.name), onSuccess: done }),
+    remove: useMutation({ mutationFn: (id: string) => wealthApi.remove(id), onSuccess: done }),
+  }
 }

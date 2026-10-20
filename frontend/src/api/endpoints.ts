@@ -3,6 +3,8 @@ import type {
   AccountDetail,
   AccountInput,
   AccountSummary,
+  AgentSnapshot,
+  AgentStatus,
   AnalyticsRange,
   BalanceEntry,
   BalanceHistory,
@@ -18,6 +20,10 @@ import type {
   Tenant,
   TokenResponse,
   User,
+  WealthDraft,
+  WealthPlan,
+  WealthPlanSummary,
+  Narrative,
 } from '../types/api'
 
 const data = <T>(p: Promise<{ data: T }>) => p.then((r) => r.data)
@@ -77,4 +83,19 @@ export const portfoliosApi = {
 
 export const analyticsApi = {
   overview: (range: AnalyticsRange) => data(client.get<Overview>('/analytics/overview', { params: { range } })),
+}
+
+// The chat itself streams (lib/agentStream.ts); these are the plain requests around it.
+export const agentApi = {
+  status: () => data(client.get<AgentStatus>('/agent/status')),
+  snapshot: () => data(client.get<AgentSnapshot>('/agent/snapshot')),
+  transcribe: (audio: string, format: string) => data(client.post<{ text: string }>('/agent/transcribe', { audio, format })),
+}
+
+export const wealthApi = {
+  plans: () => data(client.get<WealthPlanSummary[]>('/wealth/plans')),
+  plan: (id: string) => data(client.get<WealthPlan>(`/wealth/plans/${id}`)),
+  save: (body: { name: string; draft: WealthDraft; narrative: Narrative | null }) => data(client.post<WealthPlan>('/wealth/plans', body)),
+  rename: (id: string, name: string) => data(client.patch<WealthPlan>(`/wealth/plans/${id}`, { name })),
+  remove: (id: string) => client.delete(`/wealth/plans/${id}`),
 }

@@ -4,11 +4,14 @@ No FX conversion: every figure is grouped by currency. A month's value is the
 carried-forward month-end value (see services/ledger.py), so backdated
 entries and snapshots are reflected automatically. Accounts hold cash
 balances, portfolios hold holdings value; the two are added for "total".
+An account linked to a portfolio is that portfolio's money, so it counts for
+nothing while the portfolio is open (see Item.linked_until).
 """
 
+import uuid
 from collections import defaultdict
-from dataclasses import dataclass
-from datetime import date
+from dataclasses import dataclass, field
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -33,9 +36,23 @@ class Item:
     opened_on: date | None
     group: str  # account type, or "portfolio"
     latest_snapshot: Snapshot | None = None
+    id: uuid.UUID | None = None
+    account_id: uuid.UUID | None = None  # portfolios: the linked brokerage account
+    # Accounts: closing dates (None = open) of the live portfolios linked to it.
+    # While one of them is open the account's money is the portfolio's, counted
+    # through its holdings, so the account counts as nothing on those days.
+    linked_until: list[date | None] = field(default_factory=list)
+    created_at: datetime | None = None
+
+    def linked_on(self, day: date) -> bool:
+        return any(until is None or day <= until for until in self.linked_until)
+
+    def value(self, day: date) -> Decimal | None:
+        return None if self.linked_on(day) else value_on(self.timeline, day, self.closed_on)
 
 
-def _load(db: Session, tenant: Tenant) -> list[Item]:
+def load_items(db: Session, tenant: Tenant) -> list[Item]:
+    """Every live account and portfolio of the tenant, with its value timeline (also used by the Wealth Agent)."""
     items: list[Item] = []
     accounts = db.scalars(
         select(Account).where(Account.tenant_id == tenant.id).options(selectinload(Account.tag_links).selectinload(AccountTag.tag))
@@ -55,6 +72,8 @@ def _load(db: Session, tenant: Tenant) -> list[Item]:
                 a.closed_on,
                 a.opened_on,
                 a.account_type,
+                id=a.id,
+                created_at=a.created_at,
             )
         )
 
@@ -79,8 +98,15 @@ def _load(db: Session, tenant: Tenant) -> list[Item]:
                 p.opened_on,
                 "portfolio",
                 latest.ref if latest else None,
+                id=p.id,
+                account_id=p.account_id,
+                created_at=p.created_at,
             )
         )
+    accounts_by_id = {i.id: i for i in items if i.kind == "account"}
+    for i in items:
+        if i.kind == "portfolio" and i.account_id in accounts_by_id:
+            accounts_by_id[i.account_id].linked_until.append(i.closed_on)
     return items
 
 
@@ -91,7 +117,7 @@ def _sum(values: list[Decimal | None]) -> Decimal | None:
 
 def overview(db: Session, tenant: Tenant, range_key: str, today: date | None = None) -> dict:
     today = today or date.today()
-    items = _load(db, tenant)
+    items = load_items(db, tenant)
 
     first_days = [i.timeline.first_day() for i in items if i.timeline]
     if range_key in RANGES:
@@ -103,7 +129,7 @@ def overview(db: Session, tenant: Tenant, range_key: str, today: date | None = N
     days = [min(month_end(m), today) for m in months]
 
     def series(subset: list[Item]) -> list[Decimal | None]:
-        return [_sum([value_on(i.timeline, d, i.closed_on) for i in subset]) for d in days]
+        return [_sum([i.value(d) for i in subset]) for d in days]
 
     by_currency: dict[str, list[Item]] = defaultdict(list)
     for i in items:
@@ -113,7 +139,7 @@ def overview(db: Session, tenant: Tenant, range_key: str, today: date | None = N
     last_month = month_end(add_months(today, -1))
 
     def total_on(subset: list[Item], day: date) -> Decimal | None:
-        return _sum([value_on(i.timeline, day, i.closed_on) for i in subset])
+        return _sum([i.value(day) for i in subset])
 
     currencies = []
     for currency, subset in by_currency.items():
@@ -130,7 +156,7 @@ def overview(db: Session, tenant: Tenant, range_key: str, today: date | None = N
                 "current_portfolios": total_on(portfolios, today),
                 "last_month_total": total_on(subset, last_month),
                 "year_ago_total": total_on(subset, year_ago),
-                "account_count": sum(1 for i in accounts if not i.closed_on),
+                "account_count": sum(1 for i in accounts if not i.closed_on and not i.linked_on(today)),
                 "portfolio_count": sum(1 for i in portfolios if not i.closed_on),
             }
         )
@@ -156,7 +182,7 @@ def overview(db: Session, tenant: Tenant, range_key: str, today: date | None = N
     by_class: dict[str, list] = defaultdict(list)
     by_tag: dict[str, list] = defaultdict(list)
     for i in items:
-        value = value_on(i.timeline, today, i.closed_on)
+        value = i.value(today)
         if not value:
             continue
         by_type[i.currency].append((i.group, value))
@@ -171,14 +197,6 @@ def overview(db: Session, tenant: Tenant, range_key: str, today: date | None = N
     def slices(grouped: dict[str, list]) -> list[dict]:
         return [{"currency": c, "slices": allocation(pairs)} for c, pairs in sorted(grouped.items())]
 
-    events = []
-    for i in items:
-        if i.opened_on:
-            events.append({"date": i.opened_on, "kind": f"{i.kind}_opened", "name": i.name, "currency": i.currency})
-        if i.closed_on:
-            events.append({"date": i.closed_on, "kind": f"{i.kind}_closed", "name": i.name, "currency": i.currency})
-    events.sort(key=lambda e: e["date"], reverse=True)
-
     return {
         "months": [month_key(m) for m in months],
         "currencies": currencies,
@@ -188,5 +206,59 @@ def overview(db: Session, tenant: Tenant, range_key: str, today: date | None = N
             "by_asset_class": slices(by_class),
             "by_tag": slices(by_tag),
         },
-        "timeline": events[:50],
+        "top_assets": top_assets(items, today),
+        "timeline": _events(items),
     }
+
+
+def top_assets(items: list[Item], today: date) -> list[dict]:
+    """Every positive asset held today, per currency, largest first.
+
+    An account is one asset; a portfolio contributes each holding of its
+    snapshot in force today, merged by symbol across portfolios. Closed items
+    and non-positive values (cards, loans, shorts) are left out, and so is an
+    account linked to an open portfolio (see Item.linked_until). The client
+    picks the top N for the scope it shows.
+    """
+    by_currency: dict[str, dict[tuple, dict]] = defaultdict(dict)
+    for i in items:
+        if i.closed_on is not None and i.closed_on <= today:
+            continue
+        assets = by_currency[i.currency]
+        if i.kind == "account":
+            value = i.value(today)
+            if value is not None and value > 0:
+                assets[("account", id(i))] = {"kind": "account", "name": i.name, "symbol": None, "group": i.group, "held_in": [], "value": value}
+            continue
+        point = i.timeline.at(today)
+        if point is None:
+            continue
+        for h in point.ref.holdings:
+            value = holding_value(h)
+            if value <= 0:
+                continue
+            symbol = h.symbol.strip().upper()
+            asset = assets.setdefault(
+                ("holding", symbol),
+                {"kind": "holding", "name": h.name or symbol, "symbol": symbol, "group": h.asset_class, "held_in": [], "value": ZERO},
+            )
+            asset["value"] += value
+            if i.name not in asset["held_in"]:
+                asset["held_in"].append(i.name)
+    result = []
+    for currency, assets in sorted(by_currency.items()):
+        ranked = sorted(assets.values(), key=lambda a: (-a["value"], a["name"]))
+        if ranked:
+            result.append({"currency": currency, "assets": [{**a, "value": q(a["value"]), "held_in": sorted(a["held_in"])} for a in ranked]})
+    return result
+
+
+def _events(items: list[Item]) -> list[dict]:
+    events = []
+    for i in items:
+        if i.opened_on:
+            events.append({"date": i.opened_on, "kind": f"{i.kind}_opened", "name": i.name, "currency": i.currency})
+        if i.closed_on:
+            events.append({"date": i.closed_on, "kind": f"{i.kind}_closed", "name": i.name, "currency": i.currency})
+    events.sort(key=lambda e: e["date"], reverse=True)
+    return events[:50]

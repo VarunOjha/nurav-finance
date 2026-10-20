@@ -62,7 +62,8 @@ class HoldingIn(BaseModel):
     name: str | None = Field(default=None, max_length=160)
     asset_class: AssetClass = "stock"
     quantity: Decimal = Field(gt=0, max_digits=24, decimal_places=8)
-    price: Decimal = Field(ge=0, max_digits=20, decimal_places=6)
+    buy_price: Decimal | None = Field(default=None, ge=0, max_digits=20, decimal_places=6)
+    current_price: Decimal = Field(ge=0, max_digits=20, decimal_places=6)
 
 
 class SnapshotCreate(BaseModel):
@@ -76,8 +77,11 @@ class HoldingOut(BaseModel):
     name: str | None
     asset_class: str
     quantity: Decimal
-    price: Decimal
+    buy_price: Decimal | None
+    current_price: Decimal
     value: Decimal
+    cost: Decimal | None  # quantity × buy_price; None without a buy price
+    gain: Decimal | None  # value − cost
 
 
 class SnapshotSummary(BaseModel):
@@ -87,6 +91,8 @@ class SnapshotSummary(BaseModel):
     recorded_at: datetime
     total: Decimal
     holdings_count: int
+    cost: Decimal | None  # Σ quantity × buy_price over holdings with a buy price; None if none have one
+    cost_holdings: int  # how many holdings have a buy price
 
 
 class HoldingDiff(BaseModel):
@@ -97,8 +103,11 @@ class HoldingDiff(BaseModel):
     quantity: Decimal | None
     previous_quantity: Decimal | None
     quantity_change: Decimal | None
-    price: Decimal | None
+    buy_price: Decimal | None
+    current_price: Decimal | None
     value: Decimal
+    cost: Decimal | None
+    gain: Decimal | None  # unrealised, current holdings with a buy price only
     previous_value: Decimal
     value_change: Decimal
     weight: Decimal  # share of the newer snapshot's total, 0..1
@@ -134,6 +143,11 @@ class ConsolidatedHolding(BaseModel):
     portfolios: list[str]
 
 
+class PortfolioSeries(BaseModel):
+    portfolio: str
+    values: list[Decimal | None]  # one per CurrencyConsolidation.months; None before the first snapshot
+
+
 class CurrencyConsolidation(BaseModel):
     currency: str
     total: Decimal
@@ -141,6 +155,8 @@ class CurrencyConsolidation(BaseModel):
     by_portfolio: list[AllocationSlice]
     by_asset_class: list[AllocationSlice]
     holdings: list[ConsolidatedHolding]
+    months: list[str]  # "YYYY-MM", last 12 months; the current month is as of today
+    history: list[PortfolioSeries]  # month-end value per portfolio, sorted by name
 
 
 class Consolidated(BaseModel):

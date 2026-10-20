@@ -1,11 +1,14 @@
 /// <reference types="vitest" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { fileURLToPath } from 'node:url'
+import { refAttributes } from './ref-attributes'
 
 // Dev: `npm run dev` on :5180 proxies /api to a backend on :8020 (the compose app
 // or a bare uvicorn). Production: the FastAPI container serves the built files.
 export default defineConfig({
-  plugins: [react()],
+  // data-ref on every element feeds the in-app Ref tool (src/components/RefMode.tsx).
+  plugins: [react({ babel: { plugins: [refAttributes(fileURLToPath(new URL('.', import.meta.url)))] } })],
   server: {
     port: 5180,
     proxy: { '/api': process.env.VITE_API_PROXY ?? 'http://localhost:8020' },

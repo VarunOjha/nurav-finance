@@ -64,6 +64,18 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = Field(default=720)
     account_number_key: str = Field(default="")
 
+    # Wealth Agent (OpenRouter). The key is optional: without it the app boots
+    # and the agent page says what's missing.
+    openrouter_api_key: str = Field(default="")
+    openrouter_base_url: str = Field(default="https://openrouter.ai/api/v1")
+    agent_model: str = Field(default="anthropic/claude-sonnet-4.6")
+    agent_stt_model: str = Field(default="openai/whisper-large-v3")
+    agent_daily_cap_usd: float = Field(default=5.0, ge=0)
+    # Sent as HTTP-Referer / X-Title so OpenRouter can attribute the calls.
+    agent_app_url: str = Field(default="http://localhost:8020")
+    # Scripted stand-in for the model (tests, end-to-end runs): no network, no cost.
+    agent_fake: bool = Field(default=False)
+
     @classmethod
     def settings_customise_sources(
         cls,

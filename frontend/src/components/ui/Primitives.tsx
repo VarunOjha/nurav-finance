@@ -79,7 +79,9 @@ export function Segmented<T extends string>({
 /** Underlined tabs (border-b-2), as in Nurav Docs. */
 export function Tabs<T extends string>({ value, options, onChange }: { value: T; options: { value: T; label: ReactNode }[]; onChange: (v: T) => void }) {
   return (
-    <div role="tablist" className="flex gap-6 border-b border-line overflow-x-auto">
+    // Baseline is an inset shadow, not a border: a -mb-px overlap would overflow by 1px and make
+    // Windows draw scrollbar arrows on the strip.
+    <div role="tablist" className="flex gap-6 shadow-[inset_0_-1px_0_rgb(var(--line))] overflow-x-auto">
       {options.map((o) => (
         <button
           key={o.value}
@@ -88,7 +90,7 @@ export function Tabs<T extends string>({ value, options, onChange }: { value: T;
           aria-selected={o.value === value}
           onClick={() => onChange(o.value)}
           className={cn(
-            'font-mono text-xs uppercase tracking-widest pb-2 -mb-px border-b-2 whitespace-nowrap focus:outline-none',
+            'font-mono text-xs uppercase tracking-widest pb-2 border-b-2 whitespace-nowrap focus:outline-none',
             o.value === value ? 'border-ink text-ink' : 'border-transparent text-ink-muted hover:text-ink',
           )}
         >

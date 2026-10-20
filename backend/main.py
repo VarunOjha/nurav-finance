@@ -10,7 +10,7 @@ from sqlalchemy import text
 import nurav_creds
 from database import SessionLocal
 from dependencies import get_current_user
-from routers import accounts, analytics, auth, portfolios, tags, tenants
+from routers import accounts, agent, analytics, auth, portfolios, tags, tenants, wealth
 from services.crypto import CryptoConfigError
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s [%(name)s] %(message)s")
@@ -50,6 +50,8 @@ app.include_router(tags.router, prefix="/api/tags", tags=["Tags"], dependencies=
 app.include_router(accounts.router, prefix="/api/accounts", tags=["Accounts"], dependencies=_auth)
 app.include_router(portfolios.router, prefix="/api/portfolios", tags=["Portfolios"], dependencies=_auth)
 app.include_router(analytics.router, prefix="/api/analytics", tags=["Analytics"], dependencies=_auth)
+app.include_router(agent.router, prefix="/api/agent", tags=["Wealth Agent"], dependencies=_auth)
+app.include_router(wealth.router, prefix="/api/wealth", tags=["Wealth plans"], dependencies=_auth)
 
 
 @app.get("/health", tags=["Health"])

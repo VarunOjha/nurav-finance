@@ -13,6 +13,8 @@ const config: Config = {
         ink: { DEFAULT: v('ink'), muted: v('ink-muted'), faint: v('ink-faint') },
         line: v('line'),
         error: v('error'),
+        // Chart categories, fixed order — see index.css and charts/chartTheme.ts.
+        series: Object.fromEntries(Array.from({ length: 8 }, (_, i) => [i + 1, v(`series-${i + 1}`)])),
       },
       fontFamily: {
         mono: ['"JetBrains Mono"', 'ui-monospace', 'Menlo', 'monospace'],

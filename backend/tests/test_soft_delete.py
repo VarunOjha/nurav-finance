@@ -60,7 +60,7 @@ def test_deleted_rows_do_not_block_names_or_dates(api: Api):
     port = api.portfolio()
     snap = api.snapshot(port["id"], "2024-06-30", [("AAPL", 1, 100, "stock")])
     dup = api.post(
-        f"/api/portfolios/{port['id']}/snapshots", json={"as_of": "2024-06-30", "holdings": [{"symbol": "AAPL", "quantity": "2", "price": "1"}]}
+        f"/api/portfolios/{port['id']}/snapshots", json={"as_of": "2024-06-30", "holdings": [{"symbol": "AAPL", "quantity": "2", "current_price": "1"}]}
     )
     assert dup.status_code == 409
     assert api.delete(f"/api/portfolios/{port['id']}/snapshots/{snap['id']}").status_code == 204
