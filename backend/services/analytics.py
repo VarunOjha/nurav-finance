@@ -52,7 +52,7 @@ class Item:
 
 
 def load_items(db: Session, tenant: Tenant) -> list[Item]:
-    """Every live account and portfolio of the tenant, with its value timeline (also used by the Wealth Agent)."""
+    """Every live account and portfolio of the tenant, with its value timeline."""
     items: list[Item] = []
     accounts = db.scalars(
         select(Account).where(Account.tenant_id == tenant.id).options(selectinload(Account.tag_links).selectinload(AccountTag.tag))

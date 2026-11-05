@@ -5,14 +5,12 @@ from models.portfolio import Holding, Portfolio, PortfolioTag, Snapshot
 from models.tag import Tag
 from models.tenant import Tenant
 from models.user import User
-from models.wealth import AgentUsage, WealthPlan
 
 __all__ = [
     "Account",
     "AccountIdentifier",
     "AccountLink",
     "AccountTag",
-    "AgentUsage",
     "BalanceEntry",
     "Holding",
     "Portfolio",
@@ -21,5 +19,4 @@ __all__ = [
     "Tag",
     "Tenant",
     "User",
-    "WealthPlan",
 ]

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useSearchParams } from 'react-router-dom'
 import * as Popover from '@radix-ui/react-popover'
-import { BarChart3, Compass, Landmark, Menu, Palette, UserCircle } from 'lucide-react'
+import { BarChart3, Landmark, Menu, Palette, UserCircle } from 'lucide-react'
 import { Logo } from './Logo'
 import { TenantSwitcher } from './TenantSwitcher'
 import { ThemePicker } from './ThemePicker'
@@ -14,7 +14,6 @@ const ProfileModal = lazy(() => import('./ProfileModal'))
 const NAV = [
   { to: '/accounts', label: 'Accounts', icon: Landmark },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
-  { to: '/wealth', label: 'Wealth Agent', icon: Compass },
 ] as const
 
 // Baked in at image build time (--build-arg APP_VERSION=v1.0.0); local builds show "dev".

@@ -125,7 +125,7 @@ input[type='date']::-webkit-calendar-picker-indicator { opacity: 0.6; cursor: po
   :root:not([data-theme]) input[type='date']::-webkit-calendar-picker-indicator { filter: invert(1); }
 }
 
-/* Print (Wealth Agent reports, and any page): A4, Paper palette whatever the
+/* Print: A4, Paper palette whatever the
    theme, no app chrome, and the shell's fixed-height scroller unrolled so the
    whole page prints. Sections marked .break-inside-avoid stay on one page. */
 @media print {
@@ -154,8 +154,6 @@ input[type='date']::-webkit-calendar-picker-indicator { opacity: 0.6; cursor: po
   #root [role='navigation'] { display: none !important; }
   #root > .h-screen > .flex-1 { overflow: visible; }
   #root main { height: auto; overflow: visible; }
-  /* The agent page's split panes scroll inside the window; printed, the report unrolls. */
-  #root main .h-full, #root main .min-h-0, #root main .overflow-y-auto { height: auto !important; min-height: 0; overflow: visible !important; }
   .break-inside-avoid { break-inside: avoid; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }

@@ -13,9 +13,6 @@ const PortfoliosPage = lazy(() => import('./pages/PortfoliosPage'))
 const PortfolioDetailPage = lazy(() => import('./pages/PortfolioDetailPage'))
 const SnapshotPage = lazy(() => import('./pages/SnapshotPage'))
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'))
-const WealthAgentPage = lazy(() => import('./pages/WealthAgentPage'))
-const WealthPlansPage = lazy(() => import('./pages/WealthPlansPage'))
-const WealthPlanPage = lazy(() => import('./pages/WealthPlanPage'))
 
 function RequireAuth() {
   const { user } = useAuth()
@@ -49,11 +46,6 @@ export default function App() {
         <Route path="/portfolios/:portfolioId" element={page(<PortfolioDetailPage />)} />
         <Route path="/portfolios/:portfolioId/snapshots/new" element={page(<SnapshotPage />)} />
         <Route path="/analytics" element={page(<AnalyticsPage />)} />
-        <Route path="/wealth" element={page(<WealthAgentPage />)} />
-        <Route path="/wealth/plans" element={page(<WealthPlansPage />)} />
-        <Route path="/wealth/plans/:planId" element={page(<WealthPlanPage />)} />
-        {/* The FIRE wizard was replaced by the Wealth Agent. */}
-        <Route path="/fire/*" element={<Navigate to="/wealth" replace />} />
         <Route path="/profile" element={<ProfileRedirect />} />
         <Route path="*" element={<Navigate to="/accounts" replace />} />
       </Route>
