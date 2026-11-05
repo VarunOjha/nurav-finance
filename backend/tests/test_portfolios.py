@@ -68,9 +68,9 @@ def test_consolidated_merges_symbols_per_currency(api: Api):
     assert inr["total"] == "18000.0000"
 
 
-def test_portfolio_account_link_must_be_same_tenant(api: Api):
-    other = api.post("/api/tenants", json={"name": "Parents"}).json()
-    foreign = api.post("/api/accounts", json={"name": "X", "account_type": "brokerage", "currency": "USD"}, tenant_id=other["id"]).json()
+def test_portfolio_account_link_must_be_same_workspace(api: Api):
+    other = api.post("/api/workspaces", json={"name": "Parents"}).json()
+    foreign = api.post("/api/accounts", json={"name": "X", "account_type": "brokerage", "currency": "USD"}, workspace_id=other["id"]).json()
     res = api.post("/api/portfolios", json={"name": "P", "currency": "USD", "account_id": foreign["id"]})
     assert res.status_code == 404
 

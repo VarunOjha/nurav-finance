@@ -11,12 +11,12 @@ Local-only app. FastAPI + Postgres (Neon) + React, styled after Nurav Docs.
 | Concept | What it means |
 |---|---|
 | **User** | You — sign in with email + password. |
-| **Tenant** | Whose money it is (`DEFAULT_SELF`, Parents, Household…). Every account and portfolio belongs to one tenant; the tenant bar under the header picks it and every page follows it. Tenants are created in **Profile**. `DEFAULT_SELF` is created at sign-up and can't be deleted. |
+| **Workspace** | Whose money it is (`Personal`, Parents, Household…). Every account and portfolio belongs to one workspace; the workspace bar under the header picks it and every page follows it. Workspaces are created in **Profile**. `Personal` is created at sign-up; it can be renamed but not deleted. |
 | **Account** | Checking, savings, fixed deposit, brokerage cash… Has a currency, location, free-form identifiers (IFSC, routing no., SWIFT…), links, tags. Account numbers are encrypted at rest and shown masked. |
 | **Balance entry** | Append-only. Each entry has an **as-of date** (may be in the past) and a recorded time. The balance on any day is the entry with the latest as-of date on or before it; on the same date, the last one recorded wins. Mistakes are deleted and re-entered, never edited. |
 | **Portfolio** | Holdings at a provider (Fidelity, Zerodha…), optionally linked to its cash account. |
 | **Snapshot** | Immutable, dated list of holdings (symbol, quantity, price). One per portfolio per date; backdated snapshots slot in by date, and comparisons use the previous snapshot by date. |
-| **Tag** | Your labels (savings, trading, emergency-fund…), shared across tenants. |
+| **Tag** | Your labels (savings, trading, emergency-fund…), shared across workspaces. |
 
 Rules that hold everywhere:
 
@@ -109,14 +109,14 @@ include currency symbols or signs, but thousands separators are fine. Blank line
 docker compose -f docker-compose.test.yml up -d        # stop with: docker compose -f docker-compose.test.yml down
 cd backend
 python -m venv .venv && .venv/Scripts/pip install -r requirements-dev.txt   # once
-.venv/Scripts/python -m pytest                                 # tenancy, backdating, soft deletes, snapshots, analytics, config, validation
+.venv/Scripts/python -m pytest                                 # workspaces, backdating, soft deletes, snapshots, analytics, config, validation
 .venv/Scripts/ruff check . && .venv/Scripts/ruff format --check .
 
 # Frontend
 cd frontend
 npm install                      # once
 npm run dev                      # http://localhost:5180, proxies /api to :8020
-npm test                         # Vitest (validators, date picker, password toggle, tenant switcher)
+npm test                         # Vitest (validators, date picker, password toggle, workspace switcher)
 npm run build                    # type-check + production bundle
 ```
 
@@ -136,20 +136,20 @@ backend/
   config.py          settings: nurav-creds vault first, env second; fails fast on missing keys
   nurav_creds.py     vault client (copied from Nurav Docs)
   database.py        engine, session, global soft-delete filter
-  models/            users, tenants, tags, accounts (+ identifiers, links, balance entries),
+  models/            users, workspaces, tags, accounts (+ identifiers, links, balance entries),
                      portfolios (+ snapshots, holdings)
-  routers/           /api/auth, tenants, tags, accounts, portfolios, analytics
+  routers/           /api/auth, workspaces, tags, accounts, portfolios, analytics
   schemas/           request/response models and input validation (auth.py: phone, birth date)
-  dependencies.py    current user (JWT) and current tenant (X-Tenant-Id header)
+  dependencies.py    current user (JWT) and current workspace (X-Workspace-Id header)
   services/          ledger (point-in-time maths), holdings (diffs), analytics,
                      soft_delete (cascades), crypto (Fernet), security (bcrypt + JWT)
   alembic/           migrations
   tests/             pytest against real Postgres
 frontend/src/
-  api/               axios client (JWT + X-Tenant-Id headers) and endpoint wrappers
-  context/           auth and selected-tenant state
-  hooks/queries.ts   TanStack Query hooks; cache keys are scoped by tenant
-  components/        AppLayout (header, drawer, footer), TenantSwitcher, Logo, account/portfolio form modals
+  api/               axios client (JWT + X-Workspace-Id headers) and endpoint wrappers
+  context/           auth and selected-workspace state
+  hooks/queries.ts   TanStack Query hooks; cache keys are scoped by workspace
+  components/        AppLayout (header, drawer, footer), WorkspaceSwitcher, Logo, account/portfolio form modals
   components/ui/     Button, Modal, Field (Input, PasswordInput, Select…), DateField, table/chip primitives
   lib/               formatting, validators (validate.ts), class helper
   pages/             Login, Accounts, Account detail, Portfolios, Portfolio detail,

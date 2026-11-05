@@ -19,7 +19,7 @@ import { ASSET_CLASS_ORDER, OTHER, colorSlices, nameColors, slotColors } from '.
 import { PortfolioFormModal } from '../components/PortfolioFormModal'
 import { Button } from '../components/ui/Button'
 import { Chip, Empty, ErrorBox, Loading, Page, PageHeader, ShareBar, StatCard, Table, Tabs, td, th } from '../components/ui/Primitives'
-import { useTenant } from '../context/TenantContext'
+import { useWorkspace } from '../context/WorkspaceContext'
 import { useConsolidated, usePortfolios } from '../hooks/queries'
 import { cn } from '../lib/cn'
 import { ASSET_CLASS_LABELS, arrow, deltaClass, formatDate, money, percent, quantity, signedMoney, toNumber } from '../lib/format'
@@ -28,7 +28,7 @@ import type { CurrencyConsolidation } from '../types/api'
 // Portfolios — consolidated view (canvas option B): per-currency totals, the
 // portfolio list, then share / asset-class / merged holdings per currency.
 export default function PortfoliosPage() {
-  const { tenant } = useTenant()
+  const { workspace } = useWorkspace()
   const navigate = useNavigate()
   const portfolios = usePortfolios()
   const consolidated = useConsolidated()
@@ -45,7 +45,7 @@ export default function PortfoliosPage() {
     <Page>
       <PageHeader
         title="Portfolios"
-        subtitle={`${tenant?.name ?? ''} · ${list.length} portfolio${list.length === 1 ? '' : 's'} · latest snapshot per portfolio, merged per currency — no conversion`}
+        subtitle={`${workspace?.name ?? ''} · ${list.length} portfolio${list.length === 1 ? '' : 's'} · latest snapshot per portfolio, merged per currency — no conversion`}
         actions={<Button onClick={() => setAdding(true)}>+ Add portfolio</Button>}
       />
 

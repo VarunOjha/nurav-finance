@@ -1,7 +1,7 @@
 import { useTags } from '../hooks/queries'
 import { cn } from '../lib/cn'
 
-// Toggleable chips for the user's tags (shared by all tenants). Tags are
+// Toggleable chips for the user's tags (shared by all workspaces). Tags are
 // created and edited in Profile.
 export function TagPicker({ value, onChange }: { value: string[]; onChange: (ids: string[]) => void }) {
   const { data: tags = [], isLoading } = useTags()

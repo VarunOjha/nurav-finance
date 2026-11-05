@@ -9,14 +9,14 @@ from database import get_db
 from dependencies import get_current_user
 from models import Account, AccountTag, Portfolio, PortfolioTag, Tag, User
 from models.tag import DEFAULT_TAGS
-from schemas.tenancy import TagCreate, TagOut, TagUpdate
+from schemas.workspaces import TagCreate, TagOut, TagUpdate
 from services import soft_delete
 
 router = APIRouter()
 
 
 def _usage(db: Session, user: User) -> tuple[dict, dict]:
-    """Live accounts/portfolios per tag, across all of the user's tenants.
+    """Live accounts/portfolios per tag, across all of the user's workspaces.
 
     Joining through Account/Portfolio means links to deleted parents never
     count — the global filter hides them on every joined entity.

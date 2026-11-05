@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { TENANT_KEY, TOKEN_KEY, UNAUTHORIZED_EVENT, USER_KEY } from '../api/client'
+import { WORKSPACE_KEY, TOKEN_KEY, UNAUTHORIZED_EVENT, USER_KEY } from '../api/client'
 import { authApi } from '../api/endpoints'
 import type { TokenResponse, User } from '../types/api'
 
@@ -44,7 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(USER_KEY)
-    localStorage.removeItem(TENANT_KEY)
+    localStorage.removeItem(WORKSPACE_KEY)
     queryClient.clear()
     setUserState(null)
   }, [queryClient])

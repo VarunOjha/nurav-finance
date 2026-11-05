@@ -9,12 +9,12 @@ import { FormError, Input, PasswordInput, Select } from './ui/Field'
 import { ConfirmDialog, Modal } from './ui/Modal'
 import { Chip, Loading, Table, td, th } from './ui/Primitives'
 import { useAuth } from '../context/AuthContext'
-import { useTenant } from '../context/TenantContext'
-import { useTagMutations, useTags, useTenantMutations } from '../hooks/queries'
+import { useWorkspace } from '../context/WorkspaceContext'
+import { useTagMutations, useTags, useWorkspaceMutations } from '../hooks/queries'
 import { cn } from '../lib/cn'
 import { formatDate, GENDER_LABELS, todayISO } from '../lib/format'
 import { birthDateError, EARLIEST_BIRTH_DATE, emailError, phoneError } from '../lib/validate'
-import type { Gender, Tag, Tenant } from '../types/api'
+import type { Gender, Tag, Workspace } from '../types/api'
 
 const sectionTitle = 'font-mono text-[10px] font-medium uppercase tracking-widest text-ink-muted'
 const iconBtn = 'inline-flex items-center justify-center w-9 h-9 text-ink-muted hover:text-ink focus:outline-none focus-visible:ring-1 focus-visible:ring-ink disabled:opacity-30 disabled:cursor-not-allowed'
@@ -191,42 +191,42 @@ function PasswordForm() {
   )
 }
 
-// ── Tenants ──────────────────────────────────────────────────────────────────
+// ── Workspaces ──────────────────────────────────────────────────────────────────
 
-function TenantEditModal({ tenant, onClose }: { tenant: Tenant | null; onClose: () => void }) {
-  const { update } = useTenantMutations()
+function WorkspaceEditModal({ workspace, onClose }: { workspace: Workspace | null; onClose: () => void }) {
+  const { update } = useWorkspaceMutations()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (tenant) {
-      setName(tenant.name)
-      setDescription(tenant.description ?? '')
+    if (workspace) {
+      setName(workspace.name)
+      setDescription(workspace.description ?? '')
       setError(null)
     }
-  }, [tenant])
+  }, [workspace])
 
   const save = async () => {
-    if (!tenant) return
+    if (!workspace) return
     setError(null)
     try {
       await update.mutateAsync({
-        id: tenant.id,
-        ...(tenant.is_default ? {} : { name: name.trim() }),
+        id: workspace.id,
+        name: name.trim(),
         description: description.trim() || null,
       })
       onClose()
     } catch (err) {
-      setError(apiErrorMessage(err, 'Could not save tenant'))
+      setError(apiErrorMessage(err, 'Could not save workspace'))
     }
   }
 
   return (
     <Modal
-      open={!!tenant}
+      open={!!workspace}
       onOpenChange={(o) => !o && onClose()}
-      title="Edit tenant"
+      title="Edit workspace"
       size="md"
       footer={
         <div className="flex justify-end gap-5">
@@ -242,12 +242,11 @@ function TenantEditModal({ tenant, onClose }: { tenant: Tenant | null; onClose: 
       <div className="px-5 sm:px-7 py-5 flex flex-col gap-5">
         <Input
           id="t-edit-name"
-          label="Tenant name"
+          label="Workspace name"
           value={name}
           maxLength={60}
           onChange={(e) => setName(e.target.value)}
-          disabled={tenant?.is_default}
-          hint={tenant?.is_default ? "The default tenant's name can't change" : undefined}
+          hint={workspace?.is_default ? "The default workspace can be renamed but not deleted" : undefined}
         />
         <Input id="t-edit-desc" label="Description · optional" value={description} maxLength={500} onChange={(e) => setDescription(e.target.value)} />
         <FormError message={error} />
@@ -256,16 +255,16 @@ function TenantEditModal({ tenant, onClose }: { tenant: Tenant | null; onClose: 
   )
 }
 
-function TenantsSection({ focus }: { focus: boolean }) {
-  const { tenants, tenant: selected, selectTenant, isLoading } = useTenant()
-  const { create, remove } = useTenantMutations()
+function WorkspacesSection({ focus }: { focus: boolean }) {
+  const { workspaces, workspace: selected, selectWorkspace, isLoading } = useWorkspace()
+  const { create, remove } = useWorkspaceMutations()
   const ref = useRef<HTMLElement | null>(null)
   const [adding, setAdding] = useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [createError, setCreateError] = useState<string | null>(null)
-  const [editing, setEditing] = useState<Tenant | null>(null)
-  const [deleting, setDeleting] = useState<Tenant | null>(null)
+  const [editing, setEditing] = useState<Workspace | null>(null)
+  const [deleting, setDeleting] = useState<Workspace | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -282,7 +281,7 @@ function TenantsSection({ focus }: { focus: boolean }) {
       setDescription('')
       setAdding(false)
     } catch (err) {
-      setCreateError(apiErrorMessage(err, 'Could not create tenant'))
+      setCreateError(apiErrorMessage(err, 'Could not create workspace'))
     }
   }
 
@@ -292,28 +291,28 @@ function TenantsSection({ focus }: { focus: boolean }) {
     try {
       await remove.mutateAsync(deleting.id)
       if (selected?.id === deleting.id) {
-        const fallback = tenants.find((t) => t.is_default)
-        if (fallback) selectTenant(fallback.id)
+        const fallback = workspaces.find((t) => t.is_default)
+        if (fallback) selectWorkspace(fallback.id)
       }
       setDeleting(null)
     } catch (err) {
-      setDeleteError(apiErrorMessage(err, 'Could not delete tenant'))
+      setDeleteError(apiErrorMessage(err, 'Could not delete workspace'))
     }
   }
 
   return (
-    <section id="tenants" ref={ref} className="flex flex-col gap-4 min-w-0 scroll-mt-4">
+    <section id="workspaces" ref={ref} className="flex flex-col gap-4 min-w-0 scroll-mt-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className={sectionTitle}>Tenants · {tenants.length}</h2>
+        <h2 className={sectionTitle}>Workspaces · {workspaces.length}</h2>
         <Button onClick={() => setAdding((a) => !a)} aria-expanded={adding}>
-          + New tenant
+          + New workspace
         </Button>
       </div>
 
       {adding && (
         <form onSubmit={submit} className="border border-ink p-5 flex flex-col gap-4" noValidate>
           <div className="grid grid-cols-1 sm:grid-cols-[1fr_2fr] gap-5">
-            <Input id="t-new-name" label="Tenant name" placeholder="e.g. Parents" maxLength={60} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+            <Input id="t-new-name" label="Workspace name" placeholder="e.g. Parents" maxLength={60} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
             <Input
               id="t-new-desc"
               label="Description · optional"
@@ -347,7 +346,7 @@ function TenantsSection({ focus }: { focus: boolean }) {
         <Table>
           <thead>
             <tr>
-              <th className={th}>Tenant</th>
+              <th className={th}>Workspace</th>
               <th className={th}>Description</th>
               <th className={cn(th, 'text-right')}>Accounts</th>
               <th className={cn(th, 'text-right')}>Portfolios</th>
@@ -358,7 +357,7 @@ function TenantsSection({ focus }: { focus: boolean }) {
             </tr>
           </thead>
           <tbody>
-            {tenants.map((t) => {
+            {workspaces.map((t) => {
               const active = t.id === selected?.id
               const hasData = t.account_count > 0 || t.portfolio_count > 0
               return (
@@ -375,18 +374,18 @@ function TenantsSection({ focus }: { focus: boolean }) {
                   <td className={cn(td, 'text-right py-0')}>
                     <div className="inline-flex items-center gap-1">
                       {!active && (
-                        <button type="button" onClick={() => selectTenant(t.id)} className="font-mono text-[10px] uppercase tracking-widest text-ink-muted hover:text-ink hover:underline px-2 min-h-9">
+                        <button type="button" onClick={() => selectWorkspace(t.id)} className="font-mono text-[10px] uppercase tracking-widest text-ink-muted hover:text-ink hover:underline px-2 min-h-9">
                           Use
                         </button>
                       )}
-                      <button type="button" className={iconBtn} aria-label={`Edit tenant ${t.name}`} onClick={() => setEditing(t)}>
+                      <button type="button" className={iconBtn} aria-label={`Edit workspace ${t.name}`} onClick={() => setEditing(t)}>
                         <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
                       </button>
                       {!t.is_default && (
                         <button
                           type="button"
                           className={iconBtn}
-                          aria-label={`Delete tenant ${t.name}`}
+                          aria-label={`Delete workspace ${t.name}`}
                           title={hasData ? 'Delete its accounts and portfolios first' : undefined}
                           disabled={hasData}
                           onClick={() => {
@@ -406,15 +405,15 @@ function TenantsSection({ focus }: { focus: boolean }) {
         </Table>
       )}
       <p className="font-mono text-[11px] text-ink-muted">
-        Each tenant owns its own accounts, portfolios and history; switch between them from the header. DEFAULT_SELF is created at sign-up and
-        can't be deleted.
+        Each workspace owns its own accounts, portfolios and history; switch between them from the header. The default workspace is created at
+        sign-up; you can rename it but not delete it.
       </p>
 
-      <TenantEditModal tenant={editing} onClose={() => setEditing(null)} />
+      <WorkspaceEditModal workspace={editing} onClose={() => setEditing(null)} />
       <ConfirmDialog
         open={!!deleting}
         onOpenChange={(o) => !o && setDeleting(null)}
-        title="Delete tenant"
+        title="Delete workspace"
         body={<>Delete {deleting?.name}? It has no accounts or portfolios left.</>}
         onConfirm={confirmDelete}
         isLoading={remove.isPending}
@@ -511,7 +510,7 @@ function TagsSection() {
   return (
     <section className="flex flex-col gap-4 min-w-0">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className={sectionTitle}>Tags · {tags.length} · shared by all your tenants</h2>
+        <h2 className={sectionTitle}>Tags · {tags.length} · shared by all your workspaces</h2>
         <div className="flex items-center gap-5">
           <Button variant="secondary" onClick={() => seed.mutate()} isLoading={seed.isPending}>
             Seed defaults
@@ -582,7 +581,7 @@ function TagsSection() {
   )
 }
 
-export type ProfileSection = 'tenants' | null
+export type ProfileSection = 'workspaces' | null
 
 function AppearanceSection() {
   return (
@@ -605,7 +604,7 @@ export default function ProfileModal({ open, onOpenChange, section }: { open: bo
       title="Profile"
       subtitle={
         <>
-          Your details, the tenants you track, and the tags you use on accounts and portfolios.
+          Your details, the workspaces you track, and the tags you use on accounts and portfolios.
           {user && <> · Member since {formatDate(user.created_at.slice(0, 10))}</>}
         </>
       }
@@ -616,7 +615,7 @@ export default function ProfileModal({ open, onOpenChange, section }: { open: bo
           <AppearanceSection />
         </div>
         <div className="flex flex-col gap-10 min-w-0">
-          <TenantsSection focus={open && section === 'tenants'} />
+          <WorkspacesSection focus={open && section === 'workspaces'} />
           <TagsSection />
         </div>
       </div>

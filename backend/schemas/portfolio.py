@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from schemas.common import AsOfDate, CurrencyCode, ORMModel
-from schemas.tenancy import TagRef
+from schemas.workspaces import TagRef
 
 AssetClass = Literal["stock", "etf", "mutual_fund", "bond", "cash", "crypto", "other"]
 

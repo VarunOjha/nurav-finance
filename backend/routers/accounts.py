@@ -9,8 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from database import get_db, utcnow
-from dependencies import get_current_tenant
-from models import Account, AccountIdentifier, AccountLink, AccountTag, BalanceEntry, Portfolio, Tenant
+from dependencies import get_current_workspace
+from models import Account, AccountIdentifier, AccountLink, AccountTag, BalanceEntry, Portfolio, Workspace
 from schemas.account import (
     AccountCreate,
     AccountDetail,
@@ -25,7 +25,7 @@ from schemas.account import (
     RevealedNumber,
 )
 from schemas.common import latest_allowed_date
-from schemas.tenancy import TagRef
+from schemas.workspaces import TagRef
 from services import soft_delete
 from services.access import get_account, owned_tags
 from services.crypto import decrypt_account_number, encrypt_account_number
@@ -124,8 +124,8 @@ def _replace_links(db: Session, account: Account, items: list[LinkIn]) -> None:
         db.add(AccountLink(account_id=account.id, label=item.label.strip(), url=str(item.url), position=i))
 
 
-def _replace_tags(db: Session, tenant: Tenant, account: Account, tag_ids: list[uuid.UUID]) -> None:
-    wanted = {t.id for t in owned_tags(db, tenant, tag_ids)}
+def _replace_tags(db: Session, workspace: Workspace, account: Account, tag_ids: list[uuid.UUID]) -> None:
+    wanted = {t.id for t in owned_tags(db, workspace, tag_ids)}
     now = utcnow()
     current = {link.tag_id: link for link in account.tag_links}
     for tag_id, link in current.items():
@@ -135,9 +135,9 @@ def _replace_tags(db: Session, tenant: Tenant, account: Account, tag_ids: list[u
         db.add(AccountTag(account_id=account.id, tag_id=tag_id))
 
 
-def _load(db: Session, tenant: Tenant, account_id: uuid.UUID) -> Account:
+def _load(db: Session, workspace: Workspace, account_id: uuid.UUID) -> Account:
     db.expire_all()  # drop collections cached before a write in this request
-    return get_account(db, tenant, account_id)
+    return get_account(db, workspace, account_id)
 
 
 # ── accounts ──────────────────────────────────────────────────────────────────
@@ -146,12 +146,12 @@ def _load(db: Session, tenant: Tenant, account_id: uuid.UUID) -> Account:
 @router.get("", response_model=list[AccountSummary])
 def list_accounts(
     status_filter: Literal["active", "closed", "all"] = Query("all", alias="status"),
-    tenant: Tenant = Depends(get_current_tenant),
+    workspace: Workspace = Depends(get_current_workspace),
     db: Session = Depends(get_db),
 ) -> list[AccountSummary]:
     stmt = (
         select(Account)
-        .where(Account.tenant_id == tenant.id)
+        .where(Account.workspace_id == workspace.id)
         .options(selectinload(Account.tag_links).selectinload(AccountTag.tag))
         .order_by(Account.closed_on.is_not(None), Account.currency, Account.name)
     )
@@ -165,10 +165,10 @@ def list_accounts(
 
 
 @router.post("", response_model=AccountDetail, status_code=status.HTTP_201_CREATED)
-def create_account(body: AccountCreate, tenant: Tenant = Depends(get_current_tenant), db: Session = Depends(get_db)) -> AccountDetail:
+def create_account(body: AccountCreate, workspace: Workspace = Depends(get_current_workspace), db: Session = Depends(get_db)) -> AccountDetail:
     _check_dates(body.opened_on, body.closed_on)
     account = Account(
-        tenant_id=tenant.id,
+        workspace_id=workspace.id,
         **body.model_dump(include=set(AccountCreate.model_fields) - {"account_number", "identifiers", "links", "tag_ids", "opening_balance"}),
     )
     if body.account_number and body.account_number.strip():
@@ -177,24 +177,24 @@ def create_account(body: AccountCreate, tenant: Tenant = Depends(get_current_ten
     db.flush()
     _replace_identifiers(db, account, body.identifiers)
     _replace_links(db, account, body.links)
-    _replace_tags(db, tenant, account, body.tag_ids)
+    _replace_tags(db, workspace, account, body.tag_ids)
     if body.opening_balance:
         _check_entry_date(account, body.opening_balance.as_of)
         db.add(BalanceEntry(account_id=account.id, **body.opening_balance.model_dump()))
     db.commit()
-    return _detail(db, _load(db, tenant, account.id))
+    return _detail(db, _load(db, workspace, account.id))
 
 
 @router.get("/{account_id}", response_model=AccountDetail)
-def get_account_detail(account_id: uuid.UUID, tenant: Tenant = Depends(get_current_tenant), db: Session = Depends(get_db)) -> AccountDetail:
-    return _detail(db, get_account(db, tenant, account_id))
+def get_account_detail(account_id: uuid.UUID, workspace: Workspace = Depends(get_current_workspace), db: Session = Depends(get_db)) -> AccountDetail:
+    return _detail(db, get_account(db, workspace, account_id))
 
 
 @router.patch("/{account_id}", response_model=AccountDetail)
 def update_account(
-    account_id: uuid.UUID, body: AccountUpdate, tenant: Tenant = Depends(get_current_tenant), db: Session = Depends(get_db)
+    account_id: uuid.UUID, body: AccountUpdate, workspace: Workspace = Depends(get_current_workspace), db: Session = Depends(get_db)
 ) -> AccountDetail:
-    account = get_account(db, tenant, account_id)
+    account = get_account(db, workspace, account_id)
     data = body.model_dump(exclude_unset=True)
 
     opened_on = data.get("opened_on", account.opened_on)
@@ -227,22 +227,22 @@ def update_account(
     if body.links is not None:
         _replace_links(db, account, body.links)
     if body.tag_ids is not None:
-        _replace_tags(db, tenant, account, body.tag_ids)
+        _replace_tags(db, workspace, account, body.tag_ids)
     account.updated_at = utcnow()
     db.commit()
-    return _detail(db, _load(db, tenant, account.id))
+    return _detail(db, _load(db, workspace, account.id))
 
 
 @router.delete("/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_account(account_id: uuid.UUID, tenant: Tenant = Depends(get_current_tenant), db: Session = Depends(get_db)) -> None:
-    account = get_account(db, tenant, account_id)
+def delete_account(account_id: uuid.UUID, workspace: Workspace = Depends(get_current_workspace), db: Session = Depends(get_db)) -> None:
+    account = get_account(db, workspace, account_id)
     soft_delete.delete_account(db, account.id)
     db.commit()
 
 
 @router.post("/{account_id}/reveal", response_model=RevealedNumber)
-def reveal_number(account_id: uuid.UUID, tenant: Tenant = Depends(get_current_tenant), db: Session = Depends(get_db)) -> RevealedNumber:
-    account = get_account(db, tenant, account_id)
+def reveal_number(account_id: uuid.UUID, workspace: Workspace = Depends(get_current_workspace), db: Session = Depends(get_db)) -> RevealedNumber:
+    account = get_account(db, workspace, account_id)
     if not account.account_number_enc:
         raise HTTPException(status_code=404, detail="No account number stored")
     return RevealedNumber(account_number=decrypt_account_number(account.account_number_enc))
@@ -252,8 +252,8 @@ def reveal_number(account_id: uuid.UUID, tenant: Tenant = Depends(get_current_te
 
 
 @router.get("/{account_id}/balances", response_model=BalanceHistory)
-def balance_history(account_id: uuid.UUID, tenant: Tenant = Depends(get_current_tenant), db: Session = Depends(get_db)) -> BalanceHistory:
-    account = get_account(db, tenant, account_id)
+def balance_history(account_id: uuid.UUID, workspace: Workspace = Depends(get_current_workspace), db: Session = Depends(get_db)) -> BalanceHistory:
+    account = get_account(db, workspace, account_id)
     entries = _entries_by_account(db, [account.id])[account.id]
     timeline = _timeline(entries)
     winners = effective_ids(timeline.points, key=lambda p: p.ref.id)
@@ -286,9 +286,9 @@ def balance_history(account_id: uuid.UUID, tenant: Tenant = Depends(get_current_
 
 @router.post("/{account_id}/balances", response_model=BalanceEntryOut, status_code=status.HTTP_201_CREATED)
 def record_balance(
-    account_id: uuid.UUID, body: BalanceCreate, tenant: Tenant = Depends(get_current_tenant), db: Session = Depends(get_db)
+    account_id: uuid.UUID, body: BalanceCreate, workspace: Workspace = Depends(get_current_workspace), db: Session = Depends(get_db)
 ) -> BalanceEntryOut:
-    account = get_account(db, tenant, account_id)
+    account = get_account(db, workspace, account_id)
     if body.as_of > latest_allowed_date():
         raise HTTPException(status_code=422, detail="Date cannot be in the future")
     _check_entry_date(account, body.as_of)
@@ -311,8 +311,10 @@ def record_balance(
 
 
 @router.delete("/{account_id}/balances/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_balance(account_id: uuid.UUID, entry_id: uuid.UUID, tenant: Tenant = Depends(get_current_tenant), db: Session = Depends(get_db)) -> None:
-    account = get_account(db, tenant, account_id)
+def delete_balance(
+    account_id: uuid.UUID, entry_id: uuid.UUID, workspace: Workspace = Depends(get_current_workspace), db: Session = Depends(get_db)
+) -> None:
+    account = get_account(db, workspace, account_id)
     entry = db.scalar(select(BalanceEntry).where(BalanceEntry.id == entry_id, BalanceEntry.account_id == account.id))
     if entry is None:
         raise HTTPException(status_code=404, detail="Balance entry not found")

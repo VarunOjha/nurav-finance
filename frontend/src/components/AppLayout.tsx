@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation, useSearchParams } from 'react-router-dom'
 import * as Popover from '@radix-ui/react-popover'
 import { BarChart3, Landmark, Menu, Palette, UserCircle } from 'lucide-react'
 import { Logo } from './Logo'
-import { TenantSwitcher } from './TenantSwitcher'
+import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { ThemePicker } from './ThemePicker'
 import { RefMode } from './RefMode'
 import { useAuth } from '../context/AuthContext'
@@ -19,7 +19,7 @@ const NAV = [
 // Baked in at image build time (--build-arg APP_VERSION=v1.0.0); local builds show "dev".
 const APP_VERSION: string = import.meta.env.VITE_APP_VERSION || 'dev'
 
-// App shell — header (menu, logo, user menu) with the tenant bar under it, slide-in nav
+// App shell — header (menu, logo, user menu) with the workspace bar under it, slide-in nav
 // drawer scoped to the content area, and footer. Same structure as Nurav Docs.
 export function AppLayout() {
   const { user, signOut } = useAuth()
@@ -31,7 +31,7 @@ export function AppLayout() {
   const [params, setParams] = useSearchParams()
 
   // Profile is a modal over the current page, driven by ?profile (or
-  // ?profile=tenants) so it survives reloads, works as a link and Back closes it.
+  // ?profile=workspaces) so it survives reloads, works as a link and Back closes it.
   const profileParam = params.get('profile')
   const profileOpen = profileParam !== null
   const openProfile = (section: ProfileSection = null) => {
@@ -149,9 +149,9 @@ export function AppLayout() {
             </Popover.Root>
           </div>
         </div>
-        {/* Tenant bar — everything below follows the selected tenant */}
+        {/* Workspace bar — everything below follows the selected workspace */}
         <div className="border-t border-line px-3 sm:px-8 py-1 flex items-center min-w-0">
-          <TenantSwitcher />
+          <WorkspaceSwitcher />
         </div>
       </header>
 
@@ -181,7 +181,7 @@ export function AppLayout() {
         </main>
         {profileOpen && (
           <Suspense fallback={null}>
-            <ProfileModal open onOpenChange={(o) => !o && closeProfile()} section={profileParam === 'tenants' ? 'tenants' : null} />
+            <ProfileModal open onOpenChange={(o) => !o && closeProfile()} section={profileParam === 'workspaces' ? 'workspaces' : null} />
           </Suspense>
         )}
       </div>

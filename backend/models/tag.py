@@ -18,7 +18,7 @@ DEFAULT_TAGS: tuple[tuple[str, str], ...] = (
 
 
 class Tag(IdMixin, TimestampMixin, SoftDeleteMixin, Base):
-    """User-level label, shared by all of the user's tenants."""
+    """User-level label, shared by all of the user's workspaces."""
 
     __tablename__ = "tags"
     __table_args__ = (Index("uq_tags_user_name_live", "user_id", "name", unique=True, postgresql_where=text("deleted_at IS NULL")),)

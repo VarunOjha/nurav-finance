@@ -44,7 +44,7 @@ export function LoginPage() {
               anything you missed.
             </p>
             <p className="font-mono text-[11px] leading-relaxed text-ink-muted">
-              Track yourself, your parents or a household as separate tenants. Portfolios keep dated snapshots, so you can see what
+              Track yourself, your parents or a household as separate workspaces. Portfolios keep dated snapshots, so you can see what
               changed and when.
             </p>
           </div>
@@ -267,7 +267,7 @@ function RegisterForm() {
       </div>
       <FormError message={error} />
       <div className="flex items-center justify-between gap-4">
-        <p className="font-mono text-[10px] text-ink-faint">Creates your DEFAULT_SELF tenant and default tags.</p>
+        <p className="font-mono text-[10px] text-ink-faint">Creates your Personal workspace and default tags.</p>
         <Button type="submit" isLoading={busy} disabled={!form.first_name.trim() || !form.last_name.trim() || !form.email.trim() || !form.password || !form.confirm}>
           Create account
         </Button>

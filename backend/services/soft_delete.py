@@ -23,7 +23,7 @@ from models import (
     PortfolioTag,
     Snapshot,
     Tag,
-    Tenant,
+    Workspace,
 )
 
 
@@ -62,10 +62,10 @@ def delete_tag(db: Session, tag_id: uuid.UUID, now: datetime | None = None) -> N
     _mark(db, Tag, Tag.id == tag_id, now=now)
 
 
-def delete_tenant(db: Session, tenant_id: uuid.UUID, now: datetime | None = None) -> None:
+def delete_workspace(db: Session, workspace_id: uuid.UUID, now: datetime | None = None) -> None:
     now = now or utcnow()
-    for (pid,) in db.execute(select(Portfolio.id).where(Portfolio.tenant_id == tenant_id)):
+    for (pid,) in db.execute(select(Portfolio.id).where(Portfolio.workspace_id == workspace_id)):
         delete_portfolio(db, pid, now)
-    for (aid,) in db.execute(select(Account.id).where(Account.tenant_id == tenant_id)):
+    for (aid,) in db.execute(select(Account.id).where(Account.workspace_id == workspace_id)):
         delete_account(db, aid, now)
-    _mark(db, Tenant, Tenant.id == tenant_id, now=now)
+    _mark(db, Workspace, Workspace.id == workspace_id, now=now)

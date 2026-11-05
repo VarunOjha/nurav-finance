@@ -9,8 +9,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from database import get_db, utcnow
-from dependencies import get_current_tenant
-from models import Holding, Portfolio, PortfolioTag, Snapshot, Tenant
+from dependencies import get_current_workspace
+from models import Holding, Portfolio, PortfolioTag, Snapshot, Workspace
 from schemas.common import latest_allowed_date
 from schemas.portfolio import (
     Consolidated,
@@ -23,7 +23,7 @@ from schemas.portfolio import (
     SnapshotPrefill,
     SnapshotSummary,
 )
-from schemas.tenancy import TagRef
+from schemas.workspaces import TagRef
 from services import soft_delete
 from services.access import get_account, get_portfolio, get_snapshot, owned_tags
 from services.holdings import ZERO, allocation, compare, holding_cost, holding_gain, holding_value, share, snapshot_cost, snapshot_total
@@ -99,8 +99,8 @@ def _check_dates(opened_on: date | None, closed_on: date | None) -> None:
         raise HTTPException(status_code=422, detail="Closed date can't be before the opened date")
 
 
-def _replace_tags(db: Session, tenant: Tenant, p: Portfolio, tag_ids: list[uuid.UUID]) -> None:
-    wanted = {t.id for t in owned_tags(db, tenant, tag_ids)}
+def _replace_tags(db: Session, workspace: Workspace, p: Portfolio, tag_ids: list[uuid.UUID]) -> None:
+    wanted = {t.id for t in owned_tags(db, workspace, tag_ids)}
     now = utcnow()
     current = {link.tag_id: link for link in p.tag_links}
     for tag_id, link in current.items():
@@ -110,9 +110,9 @@ def _replace_tags(db: Session, tenant: Tenant, p: Portfolio, tag_ids: list[uuid.
         db.add(PortfolioTag(portfolio_id=p.id, tag_id=tag_id))
 
 
-def _one(db: Session, tenant: Tenant, portfolio_id: uuid.UUID) -> PortfolioSummary:
+def _one(db: Session, workspace: Workspace, portfolio_id: uuid.UUID) -> PortfolioSummary:
     db.expire_all()
-    p = get_portfolio(db, tenant, portfolio_id)
+    p = get_portfolio(db, workspace, portfolio_id)
     return _summary(p, snapshots_by_portfolio(db, [p.id])[p.id])
 
 
@@ -120,9 +120,9 @@ def _one(db: Session, tenant: Tenant, portfolio_id: uuid.UUID) -> PortfolioSumma
 
 
 @router.get("", response_model=list[PortfolioSummary])
-def list_portfolios(tenant: Tenant = Depends(get_current_tenant), db: Session = Depends(get_db)) -> list[PortfolioSummary]:
+def list_portfolios(workspace: Workspace = Depends(get_current_workspace), db: Session = Depends(get_db)) -> list[PortfolioSummary]:
     portfolios = db.scalars(
-        _with_relations(select(Portfolio).where(Portfolio.tenant_id == tenant.id)).order_by(
+        _with_relations(select(Portfolio).where(Portfolio.workspace_id == workspace.id)).order_by(
             Portfolio.closed_on.is_not(None), Portfolio.currency, Portfolio.name
         )
     ).all()
@@ -131,9 +131,9 @@ def list_portfolios(tenant: Tenant = Depends(get_current_tenant), db: Session = 
 
 
 @router.get("/consolidated", response_model=Consolidated)
-def consolidated(tenant: Tenant = Depends(get_current_tenant), db: Session = Depends(get_db)) -> Consolidated:
+def consolidated(workspace: Workspace = Depends(get_current_workspace), db: Session = Depends(get_db)) -> Consolidated:
     """Latest snapshot of every active portfolio, merged per currency (no FX)."""
-    portfolios = db.scalars(select(Portfolio).where(Portfolio.tenant_id == tenant.id, Portfolio.closed_on.is_(None))).all()
+    portfolios = db.scalars(select(Portfolio).where(Portfolio.workspace_id == workspace.id, Portfolio.closed_on.is_(None))).all()
     snaps = snapshots_by_portfolio(db, [p.id for p in portfolios])
     today = date.today()
     last_month_end = month_end(add_months(today, -1))
@@ -197,28 +197,30 @@ def consolidated(tenant: Tenant = Depends(get_current_tenant), db: Session = Dep
 
 
 @router.post("", response_model=PortfolioSummary, status_code=status.HTTP_201_CREATED)
-def create_portfolio(body: PortfolioCreate, tenant: Tenant = Depends(get_current_tenant), db: Session = Depends(get_db)) -> PortfolioSummary:
+def create_portfolio(body: PortfolioCreate, workspace: Workspace = Depends(get_current_workspace), db: Session = Depends(get_db)) -> PortfolioSummary:
     _check_dates(body.opened_on, body.closed_on)
     if body.account_id:
-        get_account(db, tenant, body.account_id)  # same tenant, live
-    p = Portfolio(tenant_id=tenant.id, **body.model_dump(exclude={"tag_ids"}))
+        get_account(db, workspace, body.account_id)  # same workspace, live
+    p = Portfolio(workspace_id=workspace.id, **body.model_dump(exclude={"tag_ids"}))
     db.add(p)
     db.flush()
-    _replace_tags(db, tenant, p, body.tag_ids)
+    _replace_tags(db, workspace, p, body.tag_ids)
     db.commit()
-    return _one(db, tenant, p.id)
+    return _one(db, workspace, p.id)
 
 
 @router.get("/{portfolio_id}", response_model=PortfolioSummary)
-def get_portfolio_detail(portfolio_id: uuid.UUID, tenant: Tenant = Depends(get_current_tenant), db: Session = Depends(get_db)) -> PortfolioSummary:
-    return _one(db, tenant, portfolio_id)
+def get_portfolio_detail(
+    portfolio_id: uuid.UUID, workspace: Workspace = Depends(get_current_workspace), db: Session = Depends(get_db)
+) -> PortfolioSummary:
+    return _one(db, workspace, portfolio_id)
 
 
 @router.patch("/{portfolio_id}", response_model=PortfolioSummary)
 def update_portfolio(
-    portfolio_id: uuid.UUID, body: PortfolioUpdate, tenant: Tenant = Depends(get_current_tenant), db: Session = Depends(get_db)
+    portfolio_id: uuid.UUID, body: PortfolioUpdate, workspace: Workspace = Depends(get_current_workspace), db: Session = Depends(get_db)
 ) -> PortfolioSummary:
-    p = get_portfolio(db, tenant, portfolio_id)
+    p = get_portfolio(db, workspace, portfolio_id)
     data = body.model_dump(exclude_unset=True)
     opened_on = data.get("opened_on", p.opened_on)
     closed_on = data.get("closed_on", p.closed_on)
@@ -233,7 +235,7 @@ def update_portfolio(
         if data.get("currency") and data["currency"] != p.currency:
             raise HTTPException(status_code=409, detail="Currency can't change once snapshots are recorded")
     if data.get("account_id"):
-        get_account(db, tenant, data["account_id"])
+        get_account(db, workspace, data["account_id"])
     for field in ("name", "currency"):
         if field in data and data[field] is None:
             del data[field]
@@ -241,14 +243,14 @@ def update_portfolio(
         if field in data:
             setattr(p, field, data[field])
     if body.tag_ids is not None:
-        _replace_tags(db, tenant, p, body.tag_ids)
+        _replace_tags(db, workspace, p, body.tag_ids)
     db.commit()
-    return _one(db, tenant, p.id)
+    return _one(db, workspace, p.id)
 
 
 @router.delete("/{portfolio_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_portfolio(portfolio_id: uuid.UUID, tenant: Tenant = Depends(get_current_tenant), db: Session = Depends(get_db)) -> None:
-    p = get_portfolio(db, tenant, portfolio_id)
+def delete_portfolio(portfolio_id: uuid.UUID, workspace: Workspace = Depends(get_current_workspace), db: Session = Depends(get_db)) -> None:
+    p = get_portfolio(db, workspace, portfolio_id)
     soft_delete.delete_portfolio(db, p.id)
     db.commit()
 
@@ -257,8 +259,10 @@ def delete_portfolio(portfolio_id: uuid.UUID, tenant: Tenant = Depends(get_curre
 
 
 @router.get("/{portfolio_id}/snapshots", response_model=list[SnapshotSummary])
-def list_snapshots(portfolio_id: uuid.UUID, tenant: Tenant = Depends(get_current_tenant), db: Session = Depends(get_db)) -> list[SnapshotSummary]:
-    p = get_portfolio(db, tenant, portfolio_id)
+def list_snapshots(
+    portfolio_id: uuid.UUID, workspace: Workspace = Depends(get_current_workspace), db: Session = Depends(get_db)
+) -> list[SnapshotSummary]:
+    p = get_portfolio(db, workspace, portfolio_id)
     snaps = sorted(snapshots_by_portfolio(db, [p.id])[p.id], key=lambda s: s.as_of, reverse=True)
     return [_snapshot_summary(s) for s in snaps]
 
@@ -267,11 +271,11 @@ def list_snapshots(portfolio_id: uuid.UUID, tenant: Tenant = Depends(get_current
 def prefill(
     portfolio_id: uuid.UUID,
     as_of: date = Query(..., description="Date of the snapshot being recorded"),
-    tenant: Tenant = Depends(get_current_tenant),
+    workspace: Workspace = Depends(get_current_workspace),
     db: Session = Depends(get_db),
 ) -> SnapshotPrefill:
     """Holdings of the latest snapshot dated before `as_of` (backdating-aware)."""
-    p = get_portfolio(db, tenant, portfolio_id)
+    p = get_portfolio(db, workspace, portfolio_id)
     timeline = snapshot_timeline(snapshots_by_portfolio(db, [p.id])[p.id])
     base = timeline.at(as_of - timedelta(days=1))
     if base is None:
@@ -301,10 +305,10 @@ def snapshot_detail(
     portfolio_id: uuid.UUID,
     snapshot_id: uuid.UUID,
     compare_to: uuid.UUID | None = Query(None, description="Defaults to the previous snapshot by date"),
-    tenant: Tenant = Depends(get_current_tenant),
+    workspace: Workspace = Depends(get_current_workspace),
     db: Session = Depends(get_db),
 ) -> SnapshotComparison:
-    p = get_portfolio(db, tenant, portfolio_id)
+    p = get_portfolio(db, workspace, portfolio_id)
     current = get_snapshot(db, p, snapshot_id)
     if compare_to is not None:
         previous = get_snapshot(db, p, compare_to)
@@ -327,9 +331,9 @@ def snapshot_detail(
 
 @router.post("/{portfolio_id}/snapshots", response_model=SnapshotSummary, status_code=status.HTTP_201_CREATED)
 def create_snapshot(
-    portfolio_id: uuid.UUID, body: SnapshotCreate, tenant: Tenant = Depends(get_current_tenant), db: Session = Depends(get_db)
+    portfolio_id: uuid.UUID, body: SnapshotCreate, workspace: Workspace = Depends(get_current_workspace), db: Session = Depends(get_db)
 ) -> SnapshotSummary:
-    p = get_portfolio(db, tenant, portfolio_id)
+    p = get_portfolio(db, workspace, portfolio_id)
     if body.as_of > latest_allowed_date():
         raise HTTPException(status_code=422, detail="Date cannot be in the future")
     if p.opened_on and body.as_of < p.opened_on:
@@ -366,9 +370,9 @@ def create_snapshot(
 
 @router.delete("/{portfolio_id}/snapshots/{snapshot_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_snapshot(
-    portfolio_id: uuid.UUID, snapshot_id: uuid.UUID, tenant: Tenant = Depends(get_current_tenant), db: Session = Depends(get_db)
+    portfolio_id: uuid.UUID, snapshot_id: uuid.UUID, workspace: Workspace = Depends(get_current_workspace), db: Session = Depends(get_db)
 ) -> None:
-    p = get_portfolio(db, tenant, portfolio_id)
+    p = get_portfolio(db, workspace, portfolio_id)
     s = get_snapshot(db, p, snapshot_id)
     soft_delete.delete_snapshot(db, s.id)
     db.commit()

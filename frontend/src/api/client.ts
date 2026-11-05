@@ -2,7 +2,7 @@ import axios, { AxiosError } from 'axios'
 
 export const TOKEN_KEY = 'nurav_finance_token'
 export const USER_KEY = 'nurav_finance_user'
-export const TENANT_KEY = 'nurav_finance_tenant'
+export const WORKSPACE_KEY = 'nurav_finance_workspace'
 export const UNAUTHORIZED_EVENT = 'nurav-finance:unauthorized'
 
 export const client = axios.create({
@@ -10,13 +10,13 @@ export const client = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-// Attach the JWT and the selected tenant to every request. The tenant id is
-// read at request time, so switching tenants takes effect immediately.
+// Attach the JWT and the selected workspace to every request. The workspace id is
+// read at request time, so switching workspaces takes effect immediately.
 client.interceptors.request.use((config) => {
   const token = localStorage.getItem(TOKEN_KEY)
   if (token) config.headers.Authorization = `Bearer ${token}`
-  const tenant = localStorage.getItem(TENANT_KEY)
-  if (tenant && !config.headers['X-Tenant-Id']) config.headers['X-Tenant-Id'] = tenant
+  const workspace = localStorage.getItem(WORKSPACE_KEY)
+  if (workspace && !config.headers['X-Workspace-Id']) config.headers['X-Workspace-Id'] = workspace
   return config
 })
 

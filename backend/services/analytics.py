@@ -1,4 +1,4 @@
-"""Tenant analytics, computed on read from live (non-deleted) rows only.
+"""Workspace analytics, computed on read from live (non-deleted) rows only.
 
 No FX conversion: every figure is grouped by currency. A month's value is the
 carried-forward month-end value (see services/ledger.py), so backdated
@@ -17,7 +17,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from models import Account, AccountTag, BalanceEntry, Portfolio, PortfolioTag, Snapshot, Tenant
+from models import Account, AccountTag, BalanceEntry, Portfolio, PortfolioTag, Snapshot, Workspace
 from services.holdings import ZERO, allocation, holding_value, q, snapshot_total
 from services.ledger import Point, Timeline, add_months, month_end, month_key, months_between, value_on
 
@@ -51,11 +51,11 @@ class Item:
         return None if self.linked_on(day) else value_on(self.timeline, day, self.closed_on)
 
 
-def load_items(db: Session, tenant: Tenant) -> list[Item]:
-    """Every live account and portfolio of the tenant, with its value timeline."""
+def load_items(db: Session, workspace: Workspace) -> list[Item]:
+    """Every live account and portfolio of the workspace, with its value timeline."""
     items: list[Item] = []
     accounts = db.scalars(
-        select(Account).where(Account.tenant_id == tenant.id).options(selectinload(Account.tag_links).selectinload(AccountTag.tag))
+        select(Account).where(Account.workspace_id == workspace.id).options(selectinload(Account.tag_links).selectinload(AccountTag.tag))
     ).all()
     entries: dict = defaultdict(list)
     if accounts:
@@ -78,7 +78,7 @@ def load_items(db: Session, tenant: Tenant) -> list[Item]:
         )
 
     portfolios = db.scalars(
-        select(Portfolio).where(Portfolio.tenant_id == tenant.id).options(selectinload(Portfolio.tag_links).selectinload(PortfolioTag.tag))
+        select(Portfolio).where(Portfolio.workspace_id == workspace.id).options(selectinload(Portfolio.tag_links).selectinload(PortfolioTag.tag))
     ).all()
     snaps: dict = defaultdict(list)
     if portfolios:
@@ -115,9 +115,9 @@ def _sum(values: list[Decimal | None]) -> Decimal | None:
     return q(sum(present, ZERO)) if present else None
 
 
-def overview(db: Session, tenant: Tenant, range_key: str, today: date | None = None) -> dict:
+def overview(db: Session, workspace: Workspace, range_key: str, today: date | None = None) -> dict:
     today = today or date.today()
-    items = load_items(db, tenant)
+    items = load_items(db, workspace)
 
     first_days = [i.timeline.first_day() for i in items if i.timeline]
     if range_key in RANGES:

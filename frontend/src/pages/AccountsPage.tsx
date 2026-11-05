@@ -6,7 +6,7 @@ import { AccountFormModal } from '../components/AccountFormModal'
 import { Button } from '../components/ui/Button'
 import { Input, Select } from '../components/ui/Field'
 import { Chip, Empty, ErrorBox, Loading, Page, PageHeader, Segmented, StatCard, Table, td, th } from '../components/ui/Primitives'
-import { useTenant } from '../context/TenantContext'
+import { useWorkspace } from '../context/WorkspaceContext'
 import { useAccounts, useTags } from '../hooks/queries'
 import { cn } from '../lib/cn'
 import { ACCOUNT_TYPE_LABELS, arrow, countryName, deltaClass, formatDate, money, signedMoney, toNumber } from '../lib/format'
@@ -19,7 +19,7 @@ function location(a: AccountSummary): string {
 }
 
 export default function AccountsPage() {
-  const { tenant } = useTenant()
+  const { workspace } = useWorkspace()
   const { data: accounts, isLoading, error } = useAccounts()
   const { data: tags = [] } = useTags()
   const [modalOpen, setModalOpen] = useState(false)
@@ -69,7 +69,7 @@ export default function AccountsPage() {
         title="Accounts"
         subtitle={
           <>
-            <span className="text-ink">{tenant?.name}</span> · {all.length} account{all.length === 1 ? '' : 's'} · {active.length} active ·{' '}
+            <span className="text-ink">{workspace?.name}</span> · {all.length} account{all.length === 1 ? '' : 's'} · {active.length} active ·{' '}
             {closedCount} closed · balances are the latest entry per account
           </>
         }

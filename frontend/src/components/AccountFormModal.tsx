@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Plus, X } from 'lucide-react'
 import { apiErrorMessage } from '../api/client'
-import { useTenant } from '../context/TenantContext'
+import { useWorkspace } from '../context/WorkspaceContext'
 import { useAccountMutations } from '../hooks/queries'
 import { parseAmount } from '../lib/amount'
 import { ACCOUNT_TYPE_LABELS, COUNTRIES, CURRENCIES, todayISO } from '../lib/format'
@@ -82,7 +82,7 @@ interface Props {
 
 // Big two-column add/edit modal. Lists (identifiers, links, tags) replace on save.
 export function AccountFormModal({ open, onOpenChange, account, onSaved }: Props) {
-  const { tenant } = useTenant()
+  const { workspace } = useWorkspace()
   const { create, update } = useAccountMutations()
   const [form, setForm] = useState<FormState>(() => initial(account))
   const [error, setError] = useState<string | null>(null)
@@ -166,7 +166,7 @@ export function AccountFormModal({ open, onOpenChange, account, onSaved }: Props
       title={editing ? `Edit account · ${account.name}` : 'Add account'}
       subtitle={
         <>
-          Tenant <span className="text-ink">{tenant?.name}</span> · details can be edited later; balances are only ever appended.
+          Workspace <span className="text-ink">{workspace?.name}</span> · details can be edited later; balances are only ever appended.
         </>
       }
       footer={

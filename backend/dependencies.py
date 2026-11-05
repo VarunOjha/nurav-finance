@@ -1,9 +1,9 @@
-"""Request-scoped auth and tenant resolution.
+"""Request-scoped auth and workspace resolution.
 
-Every tenant-scoped endpoint depends on `get_current_tenant`, which reads the
-`X-Tenant-Id` header and verifies the tenant belongs to the signed-in user.
-Data access below that point always filters by the resolved tenant's id, so
-one tenant's rows can never leak into another's responses.
+Every workspace-scoped endpoint depends on `get_current_workspace`, which reads the
+`X-Workspace-Id` header and verifies the workspace belongs to the signed-in user.
+Data access below that point always filters by the resolved workspace's id, so
+one workspace's rows can never leak into another's responses.
 """
 
 import uuid
@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import Tenant, User
+from models import User, Workspace
 from services.security import decode_access_token
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
@@ -39,12 +39,12 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     return user
 
 
-def get_current_tenant(
-    x_tenant_id: uuid.UUID = Header(..., description="Selected tenant (from the header switcher)"),
+def get_current_workspace(
+    x_workspace_id: uuid.UUID = Header(..., description="Selected workspace (from the header switcher)"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> Tenant:
-    tenant = db.scalar(select(Tenant).where(Tenant.id == x_tenant_id, Tenant.user_id == user.id))
-    if tenant is None:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-    return tenant
+) -> Workspace:
+    workspace = db.scalar(select(Workspace).where(Workspace.id == x_workspace_id, Workspace.user_id == user.id))
+    if workspace is None:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    return workspace

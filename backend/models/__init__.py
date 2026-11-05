@@ -3,8 +3,8 @@
 from models.account import Account, AccountIdentifier, AccountLink, AccountTag, BalanceEntry
 from models.portfolio import Holding, Portfolio, PortfolioTag, Snapshot
 from models.tag import Tag
-from models.tenant import Tenant
 from models.user import User
+from models.workspace import Workspace
 
 __all__ = [
     "Account",
@@ -17,6 +17,6 @@ __all__ = [
     "PortfolioTag",
     "Snapshot",
     "Tag",
-    "Tenant",
+    "Workspace",
     "User",
 ]

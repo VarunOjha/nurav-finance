@@ -2,15 +2,15 @@ import uuid
 from datetime import date
 
 from database import SessionLocal
-from models import Tenant
+from models import Workspace
 from services import analytics
 from tests.conftest import Api
 
 
 def _overview(api: Api, today: date) -> dict:
     with SessionLocal() as db:  # type: Session
-        tenant = db.get(Tenant, uuid.UUID(api.tenant_id))
-        return analytics.overview(db, tenant, "all", today=today)
+        workspace = db.get(Workspace, uuid.UUID(api.workspace_id))
+        return analytics.overview(db, workspace, "all", today=today)
 
 
 def test_per_currency_series_with_carry_forward_and_close(api: Api):

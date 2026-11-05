@@ -1,9 +1,9 @@
-// TanStack Query hooks. Tenant-scoped keys start with the tenant id, so
-// switching tenants swaps every cache entry at once. Mutations invalidate
+// TanStack Query hooks. Workspace-scoped keys start with the workspace id, so
+// switching workspaces swaps every cache entry at once. Mutations invalidate
 // (no optimistic updates), like Nurav Docs.
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { accountsApi, analyticsApi, portfoliosApi, tagsApi, tenantsApi } from '../api/endpoints'
-import { tenantsKey, useTenant } from '../context/TenantContext'
+import { accountsApi, analyticsApi, portfoliosApi, tagsApi, workspacesApi } from '../api/endpoints'
+import { workspacesKey, useWorkspace } from '../context/WorkspaceContext'
 import type { AccountInput, AnalyticsRange, HoldingInput, PortfolioInput } from '../types/api'
 
 const keys = {
@@ -20,19 +20,19 @@ const keys = {
   analytics: (t: string | null, range: AnalyticsRange) => ['t', t, 'analytics', range] as const,
 }
 
-/** Everything derived from a tenant's data, plus the counts shown on tenants/tags. */
-function invalidateTenantData(qc: QueryClient, tenantId: string | null) {
-  qc.invalidateQueries({ queryKey: ['t', tenantId] })
-  qc.invalidateQueries({ queryKey: tenantsKey })
+/** Everything derived from a workspace's data, plus the counts shown on workspaces/tags. */
+function invalidateWorkspaceData(qc: QueryClient, workspaceId: string | null) {
+  qc.invalidateQueries({ queryKey: ['t', workspaceId] })
+  qc.invalidateQueries({ queryKey: workspacesKey })
   qc.invalidateQueries({ queryKey: keys.tags })
 }
 
 function useScoped() {
-  const { tenantId } = useTenant()
-  return { tenantId, enabled: !!tenantId }
+  const { workspaceId } = useWorkspace()
+  return { workspaceId, enabled: !!workspaceId }
 }
 
-// ── tenants & tags (user-level) ──────────────────────────────────────────────
+// ── workspaces & tags (user-level) ──────────────────────────────────────────────
 
 export function useTags() {
   return useQuery({ queryKey: keys.tags, queryFn: tagsApi.list })
@@ -52,37 +52,37 @@ export function useTagMutations() {
   }
 }
 
-export function useTenantMutations() {
+export function useWorkspaceMutations() {
   const qc = useQueryClient()
-  const done = () => qc.invalidateQueries({ queryKey: tenantsKey })
+  const done = () => qc.invalidateQueries({ queryKey: workspacesKey })
   return {
-    create: useMutation({ mutationFn: tenantsApi.create, onSuccess: done }),
-    update: useMutation({ mutationFn: (v: { id: string; name?: string; description?: string | null }) => tenantsApi.update(v.id, v), onSuccess: done }),
-    remove: useMutation({ mutationFn: tenantsApi.remove, onSuccess: done }),
+    create: useMutation({ mutationFn: workspacesApi.create, onSuccess: done }),
+    update: useMutation({ mutationFn: (v: { id: string; name?: string; description?: string | null }) => workspacesApi.update(v.id, v), onSuccess: done }),
+    remove: useMutation({ mutationFn: workspacesApi.remove, onSuccess: done }),
   }
 }
 
 // ── accounts & balances ──────────────────────────────────────────────────────
 
 export function useAccounts() {
-  const { tenantId, enabled } = useScoped()
-  return useQuery({ queryKey: keys.accounts(tenantId), queryFn: () => accountsApi.list('all'), enabled })
+  const { workspaceId, enabled } = useScoped()
+  return useQuery({ queryKey: keys.accounts(workspaceId), queryFn: () => accountsApi.list('all'), enabled })
 }
 
 export function useAccount(id: string) {
-  const { tenantId, enabled } = useScoped()
-  return useQuery({ queryKey: keys.account(tenantId, id), queryFn: () => accountsApi.get(id), enabled })
+  const { workspaceId, enabled } = useScoped()
+  return useQuery({ queryKey: keys.account(workspaceId, id), queryFn: () => accountsApi.get(id), enabled })
 }
 
 export function useBalances(id: string) {
-  const { tenantId, enabled } = useScoped()
-  return useQuery({ queryKey: keys.balances(tenantId, id), queryFn: () => accountsApi.balances(id), enabled })
+  const { workspaceId, enabled } = useScoped()
+  return useQuery({ queryKey: keys.balances(workspaceId, id), queryFn: () => accountsApi.balances(id), enabled })
 }
 
 export function useAccountMutations() {
   const qc = useQueryClient()
-  const { tenantId } = useTenant()
-  const done = () => invalidateTenantData(qc, tenantId)
+  const { workspaceId } = useWorkspace()
+  const done = () => invalidateWorkspaceData(qc, workspaceId)
   return {
     create: useMutation({ mutationFn: (body: AccountInput) => accountsApi.create(body), onSuccess: done }),
     update: useMutation({ mutationFn: (v: { id: string; body: Partial<AccountInput> }) => accountsApi.update(v.id, v.body), onSuccess: done }),
@@ -98,38 +98,38 @@ export function useAccountMutations() {
 // ── portfolios & snapshots ───────────────────────────────────────────────────
 
 export function usePortfolios() {
-  const { tenantId, enabled } = useScoped()
-  return useQuery({ queryKey: keys.portfolios(tenantId), queryFn: portfoliosApi.list, enabled })
+  const { workspaceId, enabled } = useScoped()
+  return useQuery({ queryKey: keys.portfolios(workspaceId), queryFn: portfoliosApi.list, enabled })
 }
 
 export function useConsolidated() {
-  const { tenantId, enabled } = useScoped()
-  return useQuery({ queryKey: keys.consolidated(tenantId), queryFn: portfoliosApi.consolidated, enabled })
+  const { workspaceId, enabled } = useScoped()
+  return useQuery({ queryKey: keys.consolidated(workspaceId), queryFn: portfoliosApi.consolidated, enabled })
 }
 
 export function usePortfolio(id: string) {
-  const { tenantId, enabled } = useScoped()
-  return useQuery({ queryKey: keys.portfolio(tenantId, id), queryFn: () => portfoliosApi.get(id), enabled })
+  const { workspaceId, enabled } = useScoped()
+  return useQuery({ queryKey: keys.portfolio(workspaceId, id), queryFn: () => portfoliosApi.get(id), enabled })
 }
 
 export function useSnapshots(id: string) {
-  const { tenantId, enabled } = useScoped()
-  return useQuery({ queryKey: keys.snapshots(tenantId, id), queryFn: () => portfoliosApi.snapshots(id), enabled })
+  const { workspaceId, enabled } = useScoped()
+  return useQuery({ queryKey: keys.snapshots(workspaceId, id), queryFn: () => portfoliosApi.snapshots(id), enabled })
 }
 
 export function useSnapshotComparison(id: string, snapshotId: string | null, compareTo: string | null) {
-  const { tenantId, enabled } = useScoped()
+  const { workspaceId, enabled } = useScoped()
   return useQuery({
-    queryKey: keys.snapshot(tenantId, id, snapshotId ?? '', compareTo),
+    queryKey: keys.snapshot(workspaceId, id, snapshotId ?? '', compareTo),
     queryFn: () => portfoliosApi.snapshot(id, snapshotId as string, compareTo),
     enabled: enabled && !!snapshotId,
   })
 }
 
 export function useSnapshotPrefill(id: string, asOf: string) {
-  const { tenantId, enabled } = useScoped()
+  const { workspaceId, enabled } = useScoped()
   return useQuery({
-    queryKey: keys.prefill(tenantId, id, asOf),
+    queryKey: keys.prefill(workspaceId, id, asOf),
     queryFn: () => portfoliosApi.prefill(id, asOf),
     enabled: enabled && /^\d{4}-\d{2}-\d{2}$/.test(asOf),
   })
@@ -137,8 +137,8 @@ export function useSnapshotPrefill(id: string, asOf: string) {
 
 export function usePortfolioMutations() {
   const qc = useQueryClient()
-  const { tenantId } = useTenant()
-  const done = () => invalidateTenantData(qc, tenantId)
+  const { workspaceId } = useWorkspace()
+  const done = () => invalidateWorkspaceData(qc, workspaceId)
   return {
     create: useMutation({ mutationFn: (body: PortfolioInput) => portfoliosApi.create(body), onSuccess: done }),
     update: useMutation({ mutationFn: (v: { id: string; body: Partial<PortfolioInput> }) => portfoliosApi.update(v.id, v.body), onSuccess: done }),
@@ -154,6 +154,6 @@ export function usePortfolioMutations() {
 // ── analytics ────────────────────────────────────────────────────────────────
 
 export function useOverview(range: AnalyticsRange) {
-  const { tenantId, enabled } = useScoped()
-  return useQuery({ queryKey: keys.analytics(tenantId, range), queryFn: () => analyticsApi.overview(range), enabled })
+  const { workspaceId, enabled } = useScoped()
+  return useQuery({ queryKey: keys.analytics(workspaceId, range), queryFn: () => analyticsApi.overview(range), enabled })
 }

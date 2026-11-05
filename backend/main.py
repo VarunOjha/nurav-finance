@@ -10,7 +10,7 @@ from sqlalchemy import text
 import nurav_creds
 from database import SessionLocal
 from dependencies import get_current_user
-from routers import accounts, analytics, auth, portfolios, tags, tenants
+from routers import accounts, analytics, auth, portfolios, tags, workspaces
 from services.crypto import CryptoConfigError
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s [%(name)s] %(message)s")
@@ -28,7 +28,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Nurav Finance API",
-    description="Personal finance tracker: tenants, accounts, balances, portfolios, analytics.",
+    description="Personal finance tracker: workspaces, accounts, balances, portfolios, analytics.",
     version="1.0.0",
     docs_url="/api/docs",
     redoc_url=None,
@@ -45,7 +45,7 @@ async def _crypto_error(_: Request, exc: CryptoConfigError) -> JSONResponse:
 
 _auth = [Depends(get_current_user)]
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
-app.include_router(tenants.router, prefix="/api/tenants", tags=["Tenants"], dependencies=_auth)
+app.include_router(workspaces.router, prefix="/api/workspaces", tags=["Workspaces"], dependencies=_auth)
 app.include_router(tags.router, prefix="/api/tags", tags=["Tags"], dependencies=_auth)
 app.include_router(accounts.router, prefix="/api/accounts", tags=["Accounts"], dependencies=_auth)
 app.include_router(portfolios.router, prefix="/api/portfolios", tags=["Portfolios"], dependencies=_auth)

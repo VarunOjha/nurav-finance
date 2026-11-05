@@ -5,9 +5,9 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from dependencies import get_current_user
-from models import Tag, Tenant, User
+from models import Tag, User, Workspace
 from models.tag import DEFAULT_TAGS
-from models.tenant import DEFAULT_TENANT_NAME
+from models.workspace import DEFAULT_WORKSPACE_NAME
 from schemas.auth import (
     ChangePasswordRequest,
     LoginRequest,
@@ -52,7 +52,7 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)) -> TokenRespo
     )
     db.add(user)
     db.flush()
-    db.add(Tenant(user_id=user.id, name=DEFAULT_TENANT_NAME, description="Me — my own accounts and portfolios", is_default=True))
+    db.add(Workspace(user_id=user.id, name=DEFAULT_WORKSPACE_NAME, description="Me — my own accounts and portfolios", is_default=True))
     for name, description in DEFAULT_TAGS:
         db.add(Tag(user_id=user.id, name=name, description=description))
     db.commit()

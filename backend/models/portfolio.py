@@ -14,11 +14,11 @@ ASSET_CLASSES = ("stock", "etf", "mutual_fund", "bond", "cash", "crypto", "other
 class Portfolio(IdMixin, TimestampMixin, SoftDeleteMixin, Base):
     __tablename__ = "portfolios"
 
-    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id"), index=True)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id"), index=True)
     name: Mapped[str] = mapped_column(String(120))
     provider: Mapped[str | None] = mapped_column(String(120), nullable=True)
     currency: Mapped[str] = mapped_column(String(3))
-    # Optional link to the brokerage cash account (same tenant only).
+    # Optional link to the brokerage cash account (same workspace only).
     account_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("accounts.id"), nullable=True)
     opened_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     closed_on: Mapped[date | None] = mapped_column(Date, nullable=True)

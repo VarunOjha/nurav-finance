@@ -17,7 +17,7 @@ MONEY = Numeric(20, 4)
 class Account(IdMixin, TimestampMixin, SoftDeleteMixin, Base):
     __tablename__ = "accounts"
 
-    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id"), index=True)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id"), index=True)
     name: Mapped[str] = mapped_column(String(120))
     institution: Mapped[str | None] = mapped_column(String(120), nullable=True)
     account_type: Mapped[str] = mapped_column(String(20))

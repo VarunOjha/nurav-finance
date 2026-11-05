@@ -39,7 +39,7 @@ def test_deleting_account_cascades_and_hides_it(api: Api):
     assert api.get("/api/accounts").json() == []
     assert api.get(f"/api/accounts/{acc['id']}").status_code == 404
     assert {t["name"]: t["account_count"] for t in api.get("/api/tags").json()}["savings"] == 0
-    assert api.tenants()[0]["account_count"] == 0
+    assert api.workspaces()[0]["account_count"] == 0
     # The portfolio survives, unlinked.
     assert api.get(f"/api/portfolios/{port['id']}").json()["account"] is None
     overview = api.get("/api/analytics/overview", params={"range": "all"}).json()
@@ -60,7 +60,8 @@ def test_deleted_rows_do_not_block_names_or_dates(api: Api):
     port = api.portfolio()
     snap = api.snapshot(port["id"], "2024-06-30", [("AAPL", 1, 100, "stock")])
     dup = api.post(
-        f"/api/portfolios/{port['id']}/snapshots", json={"as_of": "2024-06-30", "holdings": [{"symbol": "AAPL", "quantity": "2", "current_price": "1"}]}
+        f"/api/portfolios/{port['id']}/snapshots",
+        json={"as_of": "2024-06-30", "holdings": [{"symbol": "AAPL", "quantity": "2", "current_price": "1"}]},
     )
     assert dup.status_code == 409
     assert api.delete(f"/api/portfolios/{port['id']}/snapshots/{snap['id']}").status_code == 204

@@ -7,7 +7,7 @@ import { AllocationDonut, ChartCard, ChartTooltip, Legend, Lines, Swatch, Veloci
 import { ACCOUNT_TYPE_ORDER, ASSET_CLASS_ORDER, colorSlices, nameColors, slotColors } from '../components/charts/palette'
 import { Input, Select } from '../components/ui/Field'
 import { Empty, ErrorBox, Loading, Page, PageHeader, Segmented } from '../components/ui/Primitives'
-import { useTenant } from '../context/TenantContext'
+import { useWorkspace } from '../context/WorkspaceContext'
 import { useOverview } from '../hooks/queries'
 import { cn } from '../lib/cn'
 import { ACCOUNT_TYPE_LABELS, ASSET_CLASS_LABELS, arrow, deltaClass, money, monthLabel, percent, signedMoney, signedPercent, toNumber } from '../lib/format'
@@ -559,7 +559,7 @@ export function TopAssetsSection({ data, scope, columns }: { data: Overview; sco
 }
 
 export default function AnalyticsPage() {
-  const { tenant } = useTenant()
+  const { workspace } = useWorkspace()
   const [range, setRange] = useState<AnalyticsRange>('1y')
   const [scope, setScope] = useState<Scope>('both')
   const { data, isLoading, error } = useOverview(range)
@@ -574,7 +574,7 @@ export default function AnalyticsPage() {
     <Page>
       <PageHeader
         title="Analytics"
-        subtitle={`${tenant?.name ?? ''} · month-end values, carried forward · per currency, no conversion`}
+        subtitle={`${workspace?.name ?? ''} · month-end values, carried forward · per currency, no conversion`}
         actions={
           <>
             <Segmented label="Scope" value={scope} options={SCOPE_OPTIONS} onChange={setScope} />

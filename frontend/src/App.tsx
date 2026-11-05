@@ -3,7 +3,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AppLayout } from './components/AppLayout'
 import { Loading } from './components/ui/Primitives'
 import { useAuth } from './context/AuthContext'
-import { TenantProvider } from './context/TenantContext'
+import { WorkspaceProvider } from './context/WorkspaceContext'
 import { LoginPage } from './pages/LoginPage'
 
 // Charts (recharts) only load with the pages that draw them.
@@ -19,16 +19,16 @@ function RequireAuth() {
   const location = useLocation()
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />
   return (
-    <TenantProvider>
+    <WorkspaceProvider>
       <AppLayout />
-    </TenantProvider>
+    </WorkspaceProvider>
   )
 }
 
-// Old /profile links (and /profile#tenants) open the profile modal over Accounts.
+// Old /profile links (and /profile#workspaces) open the profile modal over Accounts.
 function ProfileRedirect() {
   const { hash } = useLocation()
-  return <Navigate to={`/accounts?profile=${hash === '#tenants' ? 'tenants' : ''}`} replace />
+  return <Navigate to={`/accounts?profile=${hash === '#workspaces' ? 'workspaces' : ''}`} replace />
 }
 
 const page = (el: JSX.Element) => <Suspense fallback={<div className="max-w-7xl mx-auto px-4 sm:px-8"><Loading /></div>}>{el}</Suspense>

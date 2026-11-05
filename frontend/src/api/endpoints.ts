@@ -15,7 +15,7 @@ import type {
   SnapshotPrefill,
   SnapshotSummary,
   Tag,
-  Tenant,
+  Workspace,
   TokenResponse,
   User,
 } from '../types/api'
@@ -31,11 +31,11 @@ export const authApi = {
     client.post('/auth/change-password', { current_password, new_password }),
 }
 
-export const tenantsApi = {
-  list: () => data(client.get<Tenant[]>('/tenants')),
-  create: (body: { name: string; description?: string | null }) => data(client.post<Tenant>('/tenants', body)),
-  update: (id: string, body: { name?: string; description?: string | null }) => data(client.patch<Tenant>(`/tenants/${id}`, body)),
-  remove: (id: string) => client.delete(`/tenants/${id}`),
+export const workspacesApi = {
+  list: () => data(client.get<Workspace[]>('/workspaces')),
+  create: (body: { name: string; description?: string | null }) => data(client.post<Workspace>('/workspaces', body)),
+  update: (id: string, body: { name?: string; description?: string | null }) => data(client.patch<Workspace>(`/workspaces/${id}`, body)),
+  remove: (id: string) => client.delete(`/workspaces/${id}`),
 }
 
 export const tagsApi = {

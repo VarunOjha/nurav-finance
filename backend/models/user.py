@@ -22,4 +22,4 @@ class User(IdMixin, TimestampMixin, SoftDeleteMixin, Base):
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255))
 
-    tenants = relationship("Tenant", back_populates="user", order_by="Tenant.created_at")
+    workspaces = relationship("Workspace", back_populates="user", order_by="Workspace.created_at")

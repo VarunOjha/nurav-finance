@@ -91,7 +91,7 @@ export default function PortfolioDetailPage() {
         <Link to="/portfolios" className="font-mono text-xs uppercase tracking-widest text-ink-muted hover:text-ink">
           ← Portfolios
         </Link>
-        <ErrorBox message={apiErrorMessage(portfolio.error, 'Portfolio not found in this tenant')} />
+        <ErrorBox message={apiErrorMessage(portfolio.error, 'Portfolio not found in this workspace')} />
       </Page>
     )
   }

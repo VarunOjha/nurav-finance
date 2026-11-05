@@ -15,7 +15,7 @@ const queryClient = new QueryClient({
     queries: {
       staleTime: 30_000,
       refetchOnWindowFocus: false,
-      // 4xx won't fix itself on retry (not found, wrong tenant, validation).
+      // 4xx won't fix itself on retry (not found, wrong workspace, validation).
       retry: (count, error: unknown) => {
         const status = (error as { response?: { status?: number } })?.response?.status
         return !(status && status >= 400 && status < 500) && count < 2

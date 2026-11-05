@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { apiErrorMessage } from '../api/client'
 import { useAccounts, usePortfolioMutations } from '../hooks/queries'
-import { useTenant } from '../context/TenantContext'
+import { useWorkspace } from '../context/WorkspaceContext'
 import { CURRENCIES } from '../lib/format'
 import type { PortfolioInput, PortfolioSummary } from '../types/api'
 import { TagPicker } from './TagPicker'
@@ -43,9 +43,9 @@ function initial(p?: PortfolioSummary): FormState {
 
 const orNull = (s: string) => (s.trim() ? s.trim() : null)
 
-// Add / edit a portfolio in the current tenant.
+// Add / edit a portfolio in the current workspace.
 export function PortfolioFormModal({ open, onOpenChange, portfolio, onSaved }: Props) {
-  const { tenant } = useTenant()
+  const { workspace } = useWorkspace()
   const { data: accounts = [] } = useAccounts()
   const { create, update } = usePortfolioMutations()
   const [form, setForm] = useState<FormState>(() => initial(portfolio))
@@ -101,7 +101,7 @@ export function PortfolioFormModal({ open, onOpenChange, portfolio, onSaved }: P
       title={editing ? `Edit portfolio · ${portfolio!.name}` : 'Add portfolio'}
       subtitle={
         <>
-          Tenant <span className="text-ink">{tenant?.name}</span> · holdings are recorded as dated snapshots
+          Workspace <span className="text-ink">{workspace?.name}</span> · holdings are recorded as dated snapshots
         </>
       }
       footer={
@@ -135,7 +135,7 @@ export function PortfolioFormModal({ open, onOpenChange, portfolio, onSaved }: P
                 </option>
               ))}
             </Select>
-            <Select id="pf-account" label="Linked account" value={form.account_id} onChange={set('account_id')} hint="brokerage cash account — same tenant only">
+            <Select id="pf-account" label="Linked account" value={form.account_id} onChange={set('account_id')} hint="brokerage cash account — same workspace only">
               <option value="">None</option>
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>

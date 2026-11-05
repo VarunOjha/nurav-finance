@@ -1,8 +1,11 @@
-"""initial schema
+"""initial schema (workspaces)
+
+Squashed on 2026-11-05 when tenants became workspaces and the database was
+wiped; replaces the old 0001-0005.
 
 Revision ID: 0001
-Revises: 
-Create Date: 2026-10-12 00:06:50.738640
+Revises:
+Create Date: 2026-11-05 15:44:35.532116
 """
 from typing import Sequence, Union
 
@@ -48,7 +51,7 @@ def upgrade() -> None:
     op.create_index(op.f('ix_tags_deleted_at'), 'tags', ['deleted_at'], unique=False)
     op.create_index(op.f('ix_tags_user_id'), 'tags', ['user_id'], unique=False)
     op.create_index('uq_tags_user_name_live', 'tags', ['user_id', 'name'], unique=True, postgresql_where=sa.text('deleted_at IS NULL'))
-    op.create_table('tenants',
+    op.create_table('workspaces',
     sa.Column('user_id', sa.Uuid(), nullable=False),
     sa.Column('name', sa.String(length=60), nullable=False),
     sa.Column('description', sa.Text(), nullable=True),
@@ -60,12 +63,12 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_tenants_deleted_at'), 'tenants', ['deleted_at'], unique=False)
-    op.create_index(op.f('ix_tenants_user_id'), 'tenants', ['user_id'], unique=False)
-    op.create_index('uq_tenants_user_default_live', 'tenants', ['user_id'], unique=True, postgresql_where=sa.text('is_default AND deleted_at IS NULL'))
-    op.create_index('uq_tenants_user_name_live', 'tenants', ['user_id', sa.text('lower(name)')], unique=True, postgresql_where=sa.text('deleted_at IS NULL'))
+    op.create_index(op.f('ix_workspaces_deleted_at'), 'workspaces', ['deleted_at'], unique=False)
+    op.create_index(op.f('ix_workspaces_user_id'), 'workspaces', ['user_id'], unique=False)
+    op.create_index('uq_workspaces_user_default_live', 'workspaces', ['user_id'], unique=True, postgresql_where=sa.text('is_default AND deleted_at IS NULL'))
+    op.create_index('uq_workspaces_user_name_live', 'workspaces', ['user_id', sa.text('lower(name)')], unique=True, postgresql_where=sa.text('deleted_at IS NULL'))
     op.create_table('accounts',
-    sa.Column('tenant_id', sa.Uuid(), nullable=False),
+    sa.Column('workspace_id', sa.Uuid(), nullable=False),
     sa.Column('name', sa.String(length=120), nullable=False),
     sa.Column('institution', sa.String(length=120), nullable=True),
     sa.Column('account_type', sa.String(length=20), nullable=False),
@@ -82,11 +85,11 @@ def upgrade() -> None:
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True),
-    sa.ForeignKeyConstraint(['tenant_id'], ['tenants.id'], ),
+    sa.ForeignKeyConstraint(['workspace_id'], ['workspaces.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_accounts_deleted_at'), 'accounts', ['deleted_at'], unique=False)
-    op.create_index(op.f('ix_accounts_tenant_id'), 'accounts', ['tenant_id'], unique=False)
+    op.create_index(op.f('ix_accounts_workspace_id'), 'accounts', ['workspace_id'], unique=False)
     op.create_table('account_identifiers',
     sa.Column('account_id', sa.Uuid(), nullable=False),
     sa.Column('label', sa.String(length=60), nullable=False),
@@ -146,7 +149,7 @@ def upgrade() -> None:
     op.create_index(op.f('ix_balance_entries_account_id'), 'balance_entries', ['account_id'], unique=False)
     op.create_index(op.f('ix_balance_entries_deleted_at'), 'balance_entries', ['deleted_at'], unique=False)
     op.create_table('portfolios',
-    sa.Column('tenant_id', sa.Uuid(), nullable=False),
+    sa.Column('workspace_id', sa.Uuid(), nullable=False),
     sa.Column('name', sa.String(length=120), nullable=False),
     sa.Column('provider', sa.String(length=120), nullable=True),
     sa.Column('currency', sa.String(length=3), nullable=False),
@@ -159,11 +162,11 @@ def upgrade() -> None:
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True),
     sa.ForeignKeyConstraint(['account_id'], ['accounts.id'], ),
-    sa.ForeignKeyConstraint(['tenant_id'], ['tenants.id'], ),
+    sa.ForeignKeyConstraint(['workspace_id'], ['workspaces.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_portfolios_deleted_at'), 'portfolios', ['deleted_at'], unique=False)
-    op.create_index(op.f('ix_portfolios_tenant_id'), 'portfolios', ['tenant_id'], unique=False)
+    op.create_index(op.f('ix_portfolios_workspace_id'), 'portfolios', ['workspace_id'], unique=False)
     op.create_table('portfolio_tags',
     sa.Column('portfolio_id', sa.Uuid(), nullable=False),
     sa.Column('tag_id', sa.Uuid(), nullable=False),
@@ -199,7 +202,8 @@ def upgrade() -> None:
     sa.Column('name', sa.String(length=160), nullable=True),
     sa.Column('asset_class', sa.String(length=20), nullable=False),
     sa.Column('quantity', sa.Numeric(precision=24, scale=8), nullable=False),
-    sa.Column('price', sa.Numeric(precision=20, scale=6), nullable=False),
+    sa.Column('buy_price', sa.Numeric(precision=20, scale=6), nullable=True),
+    sa.Column('current_price', sa.Numeric(precision=20, scale=6), nullable=False),
     sa.Column('id', sa.Uuid(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
@@ -226,7 +230,7 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_portfolio_tags_portfolio_id'), table_name='portfolio_tags')
     op.drop_index(op.f('ix_portfolio_tags_deleted_at'), table_name='portfolio_tags')
     op.drop_table('portfolio_tags')
-    op.drop_index(op.f('ix_portfolios_tenant_id'), table_name='portfolios')
+    op.drop_index(op.f('ix_portfolios_workspace_id'), table_name='portfolios')
     op.drop_index(op.f('ix_portfolios_deleted_at'), table_name='portfolios')
     op.drop_table('portfolios')
     op.drop_index(op.f('ix_balance_entries_deleted_at'), table_name='balance_entries')
@@ -244,14 +248,14 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_account_identifiers_deleted_at'), table_name='account_identifiers')
     op.drop_index(op.f('ix_account_identifiers_account_id'), table_name='account_identifiers')
     op.drop_table('account_identifiers')
-    op.drop_index(op.f('ix_accounts_tenant_id'), table_name='accounts')
+    op.drop_index(op.f('ix_accounts_workspace_id'), table_name='accounts')
     op.drop_index(op.f('ix_accounts_deleted_at'), table_name='accounts')
     op.drop_table('accounts')
-    op.drop_index('uq_tenants_user_name_live', table_name='tenants', postgresql_where=sa.text('deleted_at IS NULL'))
-    op.drop_index('uq_tenants_user_default_live', table_name='tenants', postgresql_where=sa.text('is_default AND deleted_at IS NULL'))
-    op.drop_index(op.f('ix_tenants_user_id'), table_name='tenants')
-    op.drop_index(op.f('ix_tenants_deleted_at'), table_name='tenants')
-    op.drop_table('tenants')
+    op.drop_index('uq_workspaces_user_name_live', table_name='workspaces', postgresql_where=sa.text('deleted_at IS NULL'))
+    op.drop_index('uq_workspaces_user_default_live', table_name='workspaces', postgresql_where=sa.text('is_default AND deleted_at IS NULL'))
+    op.drop_index(op.f('ix_workspaces_user_id'), table_name='workspaces')
+    op.drop_index(op.f('ix_workspaces_deleted_at'), table_name='workspaces')
+    op.drop_table('workspaces')
     op.drop_index('uq_tags_user_name_live', table_name='tags', postgresql_where=sa.text('deleted_at IS NULL'))
     op.drop_index(op.f('ix_tags_user_id'), table_name='tags')
     op.drop_index(op.f('ix_tags_deleted_at'), table_name='tags')

@@ -67,7 +67,7 @@ export default function AccountDetailPage() {
     const notFound = (error as { response?: { status?: number } } | null)?.response?.status === 404
     return (
       <Page>
-        <ErrorBox message={notFound ? 'This account is not in the selected tenant (or was deleted).' : apiErrorMessage(error, 'Could not load the account')} />
+        <ErrorBox message={notFound ? 'This account is not in the selected workspace (or was deleted).' : apiErrorMessage(error, 'Could not load the account')} />
         <Link to="/accounts" className="font-mono text-xs uppercase tracking-widest text-ink-muted hover:text-ink">
           ← Accounts
         </Link>

@@ -71,30 +71,30 @@ def register(client: TestClient, **overrides) -> dict:
 
 
 class Api:
-    """Signed-in client bound to one tenant (DEFAULT_SELF unless switched)."""
+    """Signed-in client bound to one workspace (Personal unless switched)."""
 
     def __init__(self, client: TestClient, token: str):
         self.client = client
         self.token = token
-        self.tenant_id = self.tenants()[0]["id"]
+        self.workspace_id = self.workspaces()[0]["id"]
 
-    def headers(self, tenant_id: str | None = None) -> dict:
-        return {"Authorization": f"Bearer {self.token}", "X-Tenant-Id": tenant_id or self.tenant_id}
+    def headers(self, workspace_id: str | None = None) -> dict:
+        return {"Authorization": f"Bearer {self.token}", "X-Workspace-Id": workspace_id or self.workspace_id}
 
     def get(self, url, **kw):
-        return self.client.get(url, headers=self.headers(kw.pop("tenant_id", None)), **kw)
+        return self.client.get(url, headers=self.headers(kw.pop("workspace_id", None)), **kw)
 
     def post(self, url, json=None, **kw):
-        return self.client.post(url, json=json, headers=self.headers(kw.pop("tenant_id", None)), **kw)
+        return self.client.post(url, json=json, headers=self.headers(kw.pop("workspace_id", None)), **kw)
 
     def patch(self, url, json=None, **kw):
-        return self.client.patch(url, json=json, headers=self.headers(kw.pop("tenant_id", None)), **kw)
+        return self.client.patch(url, json=json, headers=self.headers(kw.pop("workspace_id", None)), **kw)
 
     def delete(self, url, **kw):
-        return self.client.delete(url, headers=self.headers(kw.pop("tenant_id", None)), **kw)
+        return self.client.delete(url, headers=self.headers(kw.pop("workspace_id", None)), **kw)
 
-    def tenants(self) -> list[dict]:
-        res = self.client.get("/api/tenants", headers={"Authorization": f"Bearer {self.token}"})
+    def workspaces(self) -> list[dict]:
+        res = self.client.get("/api/workspaces", headers={"Authorization": f"Bearer {self.token}"})
         assert res.status_code == 200, res.text
         return res.json()
 

@@ -125,7 +125,7 @@ export default function SnapshotPage() {
   if (portfolio.error || !portfolio.data) {
     return (
       <Page>
-        <ErrorBox message={apiErrorMessage(portfolio.error, 'Portfolio not found in this tenant')} />
+        <ErrorBox message={apiErrorMessage(portfolio.error, 'Portfolio not found in this workspace')} />
       </Page>
     )
   }
