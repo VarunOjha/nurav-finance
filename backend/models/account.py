@@ -8,7 +8,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base, SoftDeleteMixin
 from models.mixins import IdMixin, TimestampMixin
 
-ACCOUNT_TYPES = ("checking", "savings", "fixed_deposit", "brokerage", "retirement", "other")
+ACCOUNT_TYPES = ("checking", "savings", "fixed_deposit", "brokerage", "investment", "retirement", "other")
+# Every portfolio belongs to one account of these types.
+PORTFOLIO_ACCOUNT_TYPES = ("brokerage",)
 
 # Money: NUMERIC(20,4) everywhere a balance is stored — never floats.
 MONEY = Numeric(20, 4)

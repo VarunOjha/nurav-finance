@@ -31,7 +31,7 @@ def test_deleted_entry_is_ignored_everywhere(api: Api):
 
 def test_deleting_account_cascades_and_hides_it(api: Api):
     tags = api.tags()
-    acc = api.account(tag_ids=[tags["savings"]], identifiers=[{"label": "IFSC", "value": "X"}], account_number="123456")
+    acc = api.account(account_type="brokerage", tag_ids=[tags["savings"]], identifiers=[{"label": "IFSC", "value": "X"}], account_number="123456")
     api.balance(acc["id"], "50", "2024-01-01")
     port = api.portfolio(account_id=acc["id"])
     assert api.delete(f"/api/accounts/{acc['id']}").status_code == 204
@@ -40,10 +40,11 @@ def test_deleting_account_cascades_and_hides_it(api: Api):
     assert api.get(f"/api/accounts/{acc['id']}").status_code == 404
     assert {t["name"]: t["account_count"] for t in api.get("/api/tags").json()}["savings"] == 0
     assert api.workspaces()[0]["account_count"] == 0
-    # The portfolio survives, unlinked.
-    assert api.get(f"/api/portfolios/{port['id']}").json()["account"] is None
+    # Its portfolio belongs to it, so it goes too.
+    assert api.get(f"/api/portfolios/{port['id']}").status_code == 404
+    assert api.get("/api/portfolios").json() == []
     overview = api.get("/api/analytics/overview", params={"range": "all"}).json()
-    assert overview["currencies"][0]["account_count"] == 0
+    assert overview["currencies"] == []  # nothing left in this workspace
 
     with engine.connect() as conn:
         live = conn.execute(

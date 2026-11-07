@@ -3,35 +3,29 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { X } from 'lucide-react'
 import { apiErrorMessage } from '../api/client'
 import { HoldingsCsvModal } from '../components/HoldingsCsvModal'
+import { ScreenshotImportModal, type ImportedHolding } from '../components/ScreenshotImportModal'
+import { clearScreenshots, peekScreenshots } from '../lib/pendingScreenshots'
 import { AmountInput } from '../components/ui/AmountInput'
 import { Button } from '../components/ui/Button'
+import { BankLogo } from '../components/BankLogo'
 import { FormError, TextArea } from '../components/ui/Field'
 import { DateField } from '../components/ui/DateField'
 import { Chip, ErrorBox, Loading, Page, PageHeader, Table, td, th } from '../components/ui/Primitives'
 import { usePortfolio, usePortfolioMutations, useSnapshotPrefill } from '../hooks/queries'
-import { parseAmount, trimDecimal } from '../lib/amount'
+import { trimDecimal } from '../lib/amount'
+import { blankRow, newRowKey, num, rowsToHoldings, type HoldingRow } from '../lib/holdingRows'
 import { cn } from '../lib/cn'
 import type { CsvHolding } from '../lib/holdingsCsv'
 import { ASSET_CLASS_LABELS, arrow, deltaClass, formatDate, money, quantity, signedMoney, todayISO, toNumber } from '../lib/format'
-import type { AssetClass, Holding, HoldingInput } from '../types/api'
+import type { AssetClass, Holding } from '../types/api'
 
-interface Row {
-  key: number
-  symbol: string
-  name: string
-  asset_class: AssetClass
-  quantity: string
-  buy_price: string
-  current_price: string
-}
+type Row = HoldingRow
 
 const cellInput =
   'w-full bg-transparent border-0 border-b border-line focus:border-ink focus:outline-none font-mono text-xs text-ink py-1.5 placeholder:text-ink-faint'
 
-let nextKey = 1
-const blankRow = (): Row => ({ key: nextKey++, symbol: '', name: '', asset_class: 'stock', quantity: '', buy_price: '', current_price: '' })
 const fromHolding = (h: Holding): Row => ({
-  key: nextKey++,
+  key: newRowKey(),
   symbol: h.symbol,
   name: h.name ?? '',
   asset_class: h.asset_class,
@@ -40,13 +34,7 @@ const fromHolding = (h: Holding): Row => ({
   current_price: trimDecimal(h.current_price),
 })
 
-const fromCsv = (h: CsvHolding): Row => ({ key: nextKey++, symbol: h.symbol, name: h.name ?? '', asset_class: h.asset_class, quantity: h.quantity, buy_price: h.buy_price ?? '', current_price: h.current_price })
-
-const num = (s: string): number | null => {
-  if (!s.trim()) return null
-  const n = Number(s.replace(/,/g, ''))
-  return Number.isFinite(n) ? n : null
-}
+const fromImport = (h: CsvHolding | ImportedHolding): Row => ({ key: newRowKey(), symbol: h.symbol, name: h.name ?? '', asset_class: h.asset_class, quantity: h.quantity, buy_price: h.buy_price ?? '', current_price: h.current_price })
 
 // Record a snapshot. Rows start from the latest snapshot dated before "as of"
 // (backdating-aware); value, change and new/sold/changed are computed live.
@@ -64,6 +52,10 @@ export default function SnapshotPage() {
   const [seededFrom, setSeededFrom] = useState<string | null | undefined>(undefined) // snapshot id or null (none)
   const [error, setError] = useState<string | null>(null)
   const [csvOpen, setCsvOpen] = useState(false)
+  // Coming from Add portfolio → From screenshots: open the import with those images.
+  const [handedOver] = useState(() => peekScreenshots(portfolioId))
+  const [shotsOpen, setShotsOpen] = useState(() => !!handedOver)
+  useEffect(() => clearScreenshots(portfolioId), [portfolioId])
   const lastPrefill = useRef<typeof prefill.data>()
 
   const base = prefill.data
@@ -137,31 +129,9 @@ export default function SnapshotPage() {
     setError(null)
     if (!/^\d{4}-\d{2}-\d{2}$/.test(asOf)) return setError('Pick an "as of" date')
     if (asOf > today) return setError('The date cannot be in the future')
-    const filled = rows.filter((r) => r.symbol.trim() || r.quantity.trim() || r.buy_price.trim() || r.current_price.trim())
-    if (filled.length === 0) return setError('Add at least one holding')
-    const holdings: HoldingInput[] = []
-    const seen = new Set<string>()
-    for (const r of filled) {
-      const sym = r.symbol.trim().toUpperCase()
-      if (!sym) return setError('Every holding needs a symbol')
-      if (seen.has(sym)) return setError(`${sym} appears twice — each symbol once per snapshot`)
-      seen.add(sym)
-      const q = num(r.quantity)
-      const buy = num(r.buy_price)
-      const pr = num(r.current_price)
-      if (q === null || q <= 0) return setError(`${sym}: quantity must be a number greater than 0`)
-      if (r.buy_price.trim() && (buy === null || buy < 0)) return setError(`${sym}: buy price must be a number (0 or more), or left blank`)
-      if (pr === null || pr < 0) return setError(`${sym}: current price must be a number (0 or more)`)
-      const clean = parseAmount
-      holdings.push({
-        symbol: sym,
-        name: r.name.trim() || null,
-        asset_class: r.asset_class,
-        quantity: clean(r.quantity),
-        buy_price: clean(r.buy_price) || null,
-        current_price: clean(r.current_price),
-      })
-    }
+    const checked = rowsToHoldings(rows)
+    if ('error' in checked) return setError(checked.error)
+    const { holdings } = checked
     try {
       await createSnapshot.mutateAsync({ id: p.id, as_of: asOf, note: note.trim() || null, holdings })
       navigate(`/portfolios/${p.id}`)
@@ -183,7 +153,12 @@ export default function SnapshotPage() {
             ← {p.name}
           </Link>
         }
-        title={`Record snapshot · ${p.name}`}
+        title={
+          <span className="flex items-center gap-3">
+            <BankLogo institution={p.provider} size="lg" />
+            Record snapshot · {p.name}
+          </span>
+        }
         subtitle="Snapshots are immutable — to fix one, delete it and record it again. Backdated snapshots slot in by date."
       />
 
@@ -341,6 +316,9 @@ export default function SnapshotPage() {
           <Button variant="secondary" onClick={() => setCsvOpen(true)}>
             Paste CSV
           </Button>
+          <Button variant="secondary" onClick={() => setShotsOpen(true)}>
+            From screenshots
+          </Button>
         </div>
         <dl className="border border-line p-4 grid grid-cols-2 gap-x-8 gap-y-2 font-mono text-xs min-w-[18rem]">
           <dt className="text-[10px] uppercase tracking-widest text-ink-muted">Total</dt>
@@ -374,8 +352,23 @@ export default function SnapshotPage() {
         onAccept={(holdings) => {
           setDirty(true)
           setError(null)
-          setRows(holdings.map(fromCsv))
+          setRows(holdings.map(fromImport))
           setSeededFrom((s) => (s === undefined ? null : s)) // a prefill arriving later must not overwrite the import
+        }}
+      />
+      <ScreenshotImportModal
+        open={shotsOpen}
+        onOpenChange={setShotsOpen}
+        portfolioId={p.id}
+        currency={cur}
+        asOf={asOf}
+        initialFiles={handedOver}
+        onAccept={(holdings, shotDate) => {
+          setDirty(true)
+          setError(null)
+          if (shotDate) setAsOf(shotDate)
+          setRows(holdings.map(fromImport))
+          setSeededFrom((s) => (s === undefined ? null : s))
         }}
       />
     </Page>

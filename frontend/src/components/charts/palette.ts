@@ -6,7 +6,7 @@ import type { ChartTheme } from './chartTheme'
 // slots folds into a neutral "Other" — never a generated 9th hue.
 
 export const ASSET_CLASS_ORDER = ['stock', 'etf', 'mutual_fund', 'bond', 'cash', 'crypto', 'other']
-export const ACCOUNT_TYPE_ORDER = ['checking', 'savings', 'fixed_deposit', 'brokerage', 'retirement', 'portfolio', 'other']
+export const ACCOUNT_TYPE_ORDER = ['checking', 'savings', 'fixed_deposit', 'brokerage', 'investment', 'retirement', 'portfolio', 'other']
 
 export const OTHER = 'Other'
 

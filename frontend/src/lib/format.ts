@@ -111,10 +111,14 @@ export const ACCOUNT_TYPE_LABELS: Record<string, string> = {
   savings: 'Savings',
   fixed_deposit: 'Fixed deposit',
   brokerage: 'Brokerage',
+  investment: 'Investment',
   retirement: 'Retirement',
   other: 'Other',
   portfolio: 'Portfolio',
 }
+
+// Every portfolio belongs to one account of these types (the backend enforces it too).
+export const PORTFOLIO_ACCOUNT_TYPES: ReadonlySet<string> = new Set(['brokerage'])
 
 export const ASSET_CLASS_LABELS: Record<string, string> = {
   stock: 'Stock',
@@ -145,6 +149,8 @@ export const COUNTRIES: { code: string; name: string }[] = [
   { code: 'CA', name: 'Canada' },
   { code: 'AU', name: 'Australia' },
   { code: 'DE', name: 'Germany' },
+  { code: 'NL', name: 'Netherlands' },
+  { code: 'FR', name: 'France' },
   { code: 'JP', name: 'Japan' },
   { code: 'CH', name: 'Switzerland' },
 ]

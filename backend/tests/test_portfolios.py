@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from tests.conftest import Api
 
 
@@ -135,3 +137,44 @@ def test_consolidated_history_is_month_end_value_per_portfolio(api: Api):
     assert beta[-5] is None  # before the first snapshot
     assert beta[-4:] == ["100.0000", "100.0000", "150.0000", "150.0000"]  # carried forward
     assert usd["history"][0]["values"][-2:] == ["100.0000", "100.0000"]
+
+
+def test_portfolio_must_belong_to_a_brokerage_account(api: Api):
+    assert api.post("/api/portfolios", json={"name": "P", "currency": "USD"}).status_code == 422
+    savings = api.account(name="Savings", account_type="savings")
+    res = api.post("/api/portfolios", json={"name": "P", "currency": "USD", "account_id": savings["id"]})
+    assert res.status_code == 422 and "brokerage" in res.json()["detail"]
+
+    broker = api.account(name="Robinhood", account_type="brokerage")
+    port = api.portfolio(name="Robinhood", account_id=broker["id"])
+    assert port["account"]["id"] == broker["id"]
+    assert api.patch(f"/api/portfolios/{port['id']}", json={"account_id": None}).status_code == 422
+    assert api.patch(f"/api/portfolios/{port['id']}", json={"account_id": savings["id"]}).status_code == 422
+    # The account can't stop being a brokerage account while it has portfolios.
+    assert api.patch(f"/api/accounts/{broker['id']}", json={"account_type": "savings"}).status_code == 409
+    assert api.get(f"/api/accounts/{broker['id']}").json()["portfolios"] == [{"id": port["id"], "name": "Robinhood"}]
+
+
+def test_consolidated_shows_starting_stake_from_avg_buy_price(api: Api):
+    def snap(pid: str, rows: list[tuple]):
+        holdings = [{"symbol": s, "quantity": q, "buy_price": b, "current_price": c} for s, q, b, c in rows]
+        res = api.post(f"/api/portfolios/{pid}/snapshots", json={"as_of": "2024-06-28", "holdings": holdings})
+        assert res.status_code == 201, res.text
+
+    a = api.portfolio(name="Robinhood")
+    b = api.portfolio(name="Schwab")
+    snap(a["id"], [("AAPL", "10", "100", "200"), ("MSFT", "5", "200", "300"), ("TSLA", "1", None, "250")])
+    snap(b["id"], [("AAPL", "10", "150", "200")])
+
+    usd = api.get("/api/portfolios/consolidated").json()["currencies"][0]
+    by = {h["symbol"]: h for h in usd["holdings"]}
+    aapl, msft, tsla = by["AAPL"], by["MSFT"], by["TSLA"]
+    # AAPL: 10 @ 100 + 10 @ 150 → cost 2,500, avg 125; value 4,000.
+    assert Decimal(aapl["cost"]) == 2500 and Decimal(aapl["avg_buy_price"]) == 125
+    assert Decimal(aapl["current_price"]) == 200 and Decimal(aapl["gain"]) == 1500 and Decimal(aapl["gain_pct"]) == Decimal("0.6")
+    # Starting stake is over the holdings with a known cost (2,500 + 1,000).
+    assert Decimal(aapl["cost_share"]) == Decimal("0.714286") and Decimal(msft["cost_share"]) == Decimal("0.285714")
+    # Current share is over the whole value (4,000 + 1,500 + 250).
+    assert Decimal(aapl["share"]) == Decimal("0.695652")
+    # No buy price anywhere → no cost figures.
+    assert tsla["cost"] is None and tsla["avg_buy_price"] is None and tsla["cost_share"] is None and tsla["gain"] is None

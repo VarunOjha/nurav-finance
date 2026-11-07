@@ -1,16 +1,19 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Plus } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Briefcase, Plus } from 'lucide-react'
 import { apiErrorMessage } from '../api/client'
 import { AccountFormModal } from '../components/AccountFormModal'
+import { BankLogo } from '../components/BankLogo'
+import { PortfolioFormModal, afterPortfolioSaved } from '../components/PortfolioFormModal'
+import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
 import { Input, Select } from '../components/ui/Field'
 import { Chip, Empty, ErrorBox, Loading, Page, PageHeader, Segmented, StatCard, Table, td, th } from '../components/ui/Primitives'
 import { useWorkspace } from '../context/WorkspaceContext'
 import { useAccounts, useTags } from '../hooks/queries'
 import { cn } from '../lib/cn'
-import { ACCOUNT_TYPE_LABELS, arrow, countryName, deltaClass, formatDate, money, signedMoney, toNumber } from '../lib/format'
-import type { AccountSummary } from '../types/api'
+import { ACCOUNT_TYPE_LABELS, PORTFOLIO_ACCOUNT_TYPES, arrow, countryName, deltaClass, formatDate, money, signedMoney, toNumber } from '../lib/format'
+import type { AccountDetail, AccountSummary } from '../types/api'
 
 type Status = 'active' | 'closed' | 'all'
 
@@ -22,7 +25,11 @@ export default function AccountsPage() {
   const { workspace } = useWorkspace()
   const { data: accounts, isLoading, error } = useAccounts()
   const { data: tags = [] } = useTags()
+  const navigate = useNavigate()
   const [modalOpen, setModalOpen] = useState(false)
+  // After adding a brokerage/investment/retirement account: offer to add its portfolio.
+  const [offer, setOffer] = useState<AccountDetail | null>(null)
+  const [portfolioFor, setPortfolioFor] = useState<AccountSummary | null>(null)
   const [status, setStatus] = useState<Status>('active')
   const [search, setSearch] = useState('')
   const [tag, setTag] = useState('')
@@ -184,10 +191,15 @@ export default function AccountsPage() {
                   return (
                     <tr key={a.id} className={cn(closed && '[&_td]:text-ink-muted')}>
                       <td className={td}>
-                        <Link to={`/accounts/${a.id}`} className="text-[13px] font-medium text-ink hover:underline">
-                          {a.name}
-                        </Link>
-                        <div className="text-[10px] text-ink-muted mt-0.5">{[a.institution, a.account_number_masked].filter(Boolean).join(' · ') || '—'}</div>
+                        <div className="flex items-center gap-3">
+                          <BankLogo institution={a.institution} size="md" />
+                          <div className="min-w-0">
+                            <Link to={`/accounts/${a.id}`} className="text-[13px] font-medium text-ink hover:underline">
+                              {a.name}
+                            </Link>
+                            <div className="text-[10px] text-ink-muted mt-0.5">{[a.institution, a.account_number_masked].filter(Boolean).join(' · ') || '—'}</div>
+                          </div>
+                        </div>
                       </td>
                       <td className={cn(td, 'text-[10px] uppercase tracking-widest text-ink-muted')}>{ACCOUNT_TYPE_LABELS[a.account_type]}</td>
                       <td className={cn(td, 'text-ink-muted')}>{location(a)}</td>
@@ -204,10 +216,22 @@ export default function AccountsPage() {
                       </td>
                       <td className={cn(td, 'text-ink-muted')}>{closed ? `Closed ${formatDate(a.closed_on)}` : formatDate(a.balance_as_of)}</td>
                       <td className={cn(td, 'text-right px-2')}>
+                        {!closed && PORTFOLIO_ACCOUNT_TYPES.has(a.account_type) && (
+                          <button
+                            type="button"
+                            onClick={() => setPortfolioFor(a)}
+                            aria-label={`Add portfolio for ${a.name}`}
+                            title="Add portfolio"
+                            className="inline-flex items-center justify-center w-9 h-9 text-ink-muted hover:text-ink"
+                          >
+                            <Briefcase className="w-4 h-4" aria-hidden="true" />
+                          </button>
+                        )}
                         {!closed && (
                           <Link
                             to={`/accounts/${a.id}#record`}
                             aria-label={`Record balance for ${a.name}`}
+                            title="Record balance"
                             className="inline-flex items-center justify-center w-9 h-9 text-ink-muted hover:text-ink"
                           >
                             <Plus className="w-4 h-4" aria-hidden="true" />
@@ -224,7 +248,48 @@ export default function AccountsPage() {
         </>
       )}
 
-      <AccountFormModal open={modalOpen} onOpenChange={setModalOpen} />
+      <AccountFormModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        onSaved={(a) => {
+          if (PORTFOLIO_ACCOUNT_TYPES.has(a.account_type)) setOffer(a)
+        }}
+      />
+      <Modal
+        open={!!offer}
+        onOpenChange={(o) => !o && setOffer(null)}
+        size="sm"
+        title="Add its holdings now?"
+        footer={
+          <div className="flex justify-end items-center gap-5">
+            <Button variant="secondary" onClick={() => setOffer(null)}>
+              Later
+            </Button>
+            <Button
+              onClick={() => {
+                setPortfolioFor(offer)
+                setOffer(null)
+              }}
+            >
+              Add portfolio
+            </Button>
+          </div>
+        }
+      >
+        <div className="px-5 sm:px-7 py-5 flex items-start gap-3 font-mono text-xs text-ink-muted leading-relaxed">
+          <BankLogo institution={offer?.institution ?? null} size="md" />
+          <p>
+            <span className="text-ink">{offer?.name}</span> is saved. Add a portfolio for it to record what it holds (stocks, funds…) as dated snapshots. You can
+            also do this later from the account&apos;s page.
+          </p>
+        </div>
+      </Modal>
+      <PortfolioFormModal
+        open={!!portfolioFor}
+        onOpenChange={(o) => !o && setPortfolioFor(null)}
+        forAccount={portfolioFor ?? undefined}
+        onSaved={(p, o) => navigate(afterPortfolioSaved(p, o))}
+      />
     </Page>
   )
 }

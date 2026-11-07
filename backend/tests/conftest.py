@@ -113,6 +113,9 @@ class Api:
         return res.json()
 
     def portfolio(self, **overrides) -> dict:
+        if "account_id" not in overrides:  # every portfolio needs its brokerage account
+            name = f"{overrides.get('name', 'Brokerage')} account"
+            overrides["account_id"] = self.account(name=name, account_type="brokerage", currency=overrides.get("currency", "USD"))["id"]
         body = {"name": "Brokerage", "currency": "USD", **overrides}
         res = self.post("/api/portfolios", json=body)
         assert res.status_code == 201, res.text

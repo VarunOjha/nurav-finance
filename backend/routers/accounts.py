@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, selectinload
 from database import get_db, utcnow
 from dependencies import get_current_workspace
 from models import Account, AccountIdentifier, AccountLink, AccountTag, BalanceEntry, Portfolio, Workspace
+from models.account import PORTFOLIO_ACCOUNT_TYPES
 from schemas.account import (
     AccountCreate,
     AccountDetail,
@@ -213,6 +214,9 @@ def update_account(
     for field in ("name", "account_type", "currency"):
         if field in data and data[field] is None:
             del data[field]  # required columns can't be cleared
+    new_type = data.get("account_type", account.account_type)
+    if new_type not in PORTFOLIO_ACCOUNT_TYPES and db.scalar(select(Portfolio.id).where(Portfolio.account_id == account.id).limit(1)):
+        raise HTTPException(status_code=409, detail="This account has portfolios, so it stays a brokerage account — delete its portfolios first")
     for field in ("name", "institution", "account_type", "holder_name", "opened_on", "closed_on", "country", "city", "currency", "notes"):
         if field in data:
             setattr(account, field, data[field])

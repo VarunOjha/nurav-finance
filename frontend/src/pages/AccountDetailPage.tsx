@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ExternalLink, Trash2 } from 'lucide-react'
+import { ExternalLink, Plus, Trash2 } from 'lucide-react'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { apiErrorMessage } from '../api/client'
 import { accountsApi } from '../api/endpoints'
 import { AccountFormModal } from '../components/AccountFormModal'
+import { BankLogo } from '../components/BankLogo'
+import { PortfolioFormModal, afterPortfolioSaved } from '../components/PortfolioFormModal'
 import { axisTick, useChartTheme } from '../components/charts/chartTheme'
 import { Button } from '../components/ui/Button'
 import { AmountField } from '../components/ui/AmountInput'
@@ -12,7 +14,7 @@ import { FormError, TextArea } from '../components/ui/Field'
 import { DateField } from '../components/ui/DateField'
 import { ConfirmDialog } from '../components/ui/Modal'
 import { Chip, Empty, ErrorBox, Loading, Page, PageHeader, StatCard, Table, td, th } from '../components/ui/Primitives'
-import { useAccount, useAccountMutations, useBalances } from '../hooks/queries'
+import { useAccount, useAccountMutations, useBalances, usePortfolios } from '../hooks/queries'
 import { parseAmount } from '../lib/amount'
 import { cn } from '../lib/cn'
 import {
@@ -25,6 +27,7 @@ import {
   money,
   monthLabel,
   parseDate,
+  PORTFOLIO_ACCOUNT_TYPES,
   signedMoney,
   toNumber,
   todayISO,
@@ -56,6 +59,7 @@ export default function AccountDetailPage() {
   const { remove } = useAccountMutations()
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [addPortfolio, setAddPortfolio] = useState(false)
 
   // "+" in the accounts table links here with #record.
   useEffect(() => {
@@ -95,6 +99,7 @@ export default function AccountDetailPage() {
         }
         title={
           <span className="flex items-center gap-3">
+            <BankLogo institution={account.institution} size="xl" />
             {account.name}
             {account.status === 'closed' && <Chip>closed</Chip>}
           </span>
@@ -105,6 +110,11 @@ export default function AccountDetailPage() {
             <Button variant="secondary" onClick={() => setDeleteOpen(true)}>
               Delete
             </Button>
+            {account.status === 'active' && PORTFOLIO_ACCOUNT_TYPES.has(account.account_type) && (
+              <Button variant="secondary" onClick={() => setAddPortfolio(true)}>
+                <Plus className="w-3.5 h-3.5" aria-hidden="true" /> Add portfolio
+              </Button>
+            )}
             <Button onClick={() => setEditOpen(true)}>Edit details</Button>
           </>
         }
@@ -126,6 +136,7 @@ export default function AccountDetailPage() {
             />
           </div>
 
+          <AccountPortfolios account={account} onAdd={() => setAddPortfolio(true)} />
           {history && <BalanceChart history={history} currency={account.currency} />}
           {history && <HistoryTable account={account} entries={history.entries} />}
         </div>
@@ -143,11 +154,16 @@ export default function AccountDetailPage() {
       </div>
 
       <AccountFormModal open={editOpen} onOpenChange={setEditOpen} account={account} />
+      <PortfolioFormModal open={addPortfolio} onOpenChange={setAddPortfolio} forAccount={account} onSaved={(p, o) => navigate(afterPortfolioSaved(p, o))} />
       <ConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         title={`Delete ${account.name}?`}
-        body="The account, its balance history, identifiers and links disappear from every list, total and chart. Linked portfolios stay, unlinked."
+        body={
+          account.portfolios.length
+            ? `The account, its balance history, identifiers and links disappear from every list, total and chart — and so do its ${account.portfolios.length} portfolio${account.portfolios.length === 1 ? '' : 's'} (${account.portfolios.map((p) => p.name).join(', ')}) with all their snapshots.`
+            : 'The account, its balance history, identifiers and links disappear from every list, total and chart.'
+        }
         isLoading={remove.isPending}
         error={remove.error ? apiErrorMessage(remove.error) : null}
         onConfirm={() => remove.mutate(account.id, { onSuccess: () => navigate('/accounts', { replace: true }) })}
@@ -398,17 +414,6 @@ function Details({ account }: { account: AccountDetail }) {
             </a>
           </Row>
         ))}
-        {account.portfolios.length > 0 && (
-          <Row label="Portfolios">
-            <span className="flex flex-col items-end gap-1">
-              {account.portfolios.map((p) => (
-                <Link key={p.id} to={`/portfolios/${p.id}`} className="hover:underline">
-                  {p.name}
-                </Link>
-              ))}
-            </span>
-          </Row>
-        )}
         <Row label="Tags">
           <span className="inline-flex flex-wrap justify-end gap-1.5">
             {account.tags.length ? account.tags.map((t) => <Chip key={t.id}>{t.name}</Chip>) : '—'}
@@ -417,6 +422,66 @@ function Details({ account }: { account: AccountDetail }) {
       </dl>
       {revealError && <p className="font-mono text-[10px] text-error">{revealError}</p>}
       {account.notes && <p className="font-mono text-[11px] text-ink-muted whitespace-pre-wrap border-t border-line pt-3">{account.notes}</p>}
+    </section>
+  )
+}
+
+// Investment-type accounts list their portfolios (latest value each) and can add one,
+// prefilled from the account. Other types show the list only if one is already linked.
+function AccountPortfolios({ account, onAdd }: { account: AccountDetail; onAdd: () => void }) {
+  const { data: all } = usePortfolios()
+  const canAdd = PORTFOLIO_ACCOUNT_TYPES.has(account.account_type)
+  const linked = (all ?? []).filter((p) => p.account?.id === account.id)
+  if (!canAdd && account.portfolios.length === 0) return null
+
+  return (
+    <section aria-labelledby="account-portfolios" className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-4">
+        <h2 id="account-portfolios" className="font-mono text-[11px] uppercase tracking-widest text-ink">
+          Portfolios{linked.length ? ` · ${linked.length}` : ''}
+        </h2>
+        {canAdd && (
+          <Button variant="secondary" onClick={onAdd}>
+            <Plus className="w-3.5 h-3.5" aria-hidden="true" /> Add portfolio
+          </Button>
+        )}
+      </div>
+      {linked.length === 0 ? (
+        <button
+          type="button"
+          onClick={onAdd}
+          className="border border-dashed border-line px-5 py-4 text-left font-mono text-[11px] text-ink-muted hover:text-ink hover:border-ink"
+        >
+          No portfolios yet — add one to track this account&apos;s holdings as dated snapshots.
+        </button>
+      ) : (
+        <Table>
+          <thead>
+            <tr>
+              <th className={th}>Portfolio</th>
+              <th className={cn(th, 'text-right')}>Value</th>
+              <th className={cn(th, 'text-right')}>Change</th>
+              <th className={cn(th, 'text-right')}>As of</th>
+            </tr>
+          </thead>
+          <tbody>
+            {linked.map((p) => (
+              <tr key={p.id} className="hover:bg-paper-warm">
+                <td className={td}>
+                  <Link to={`/portfolios/${p.id}`} className="inline-flex items-center gap-2 hover:underline">
+                    <BankLogo institution={p.provider} size="xs" />
+                    {p.name}
+                    {p.status === 'closed' && <Chip>closed</Chip>}
+                  </Link>
+                </td>
+                <td className={cn(td, 'text-right')}>{money(p.value, p.currency)}</td>
+                <td className={cn(td, 'text-right', deltaClass(p.delta))}>{p.delta !== null ? signedMoney(p.delta, p.currency) : '—'}</td>
+                <td className={cn(td, 'text-right text-ink-muted')}>{p.value_as_of ? formatDate(p.value_as_of) : 'no snapshot'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      )}
     </section>
   )
 }

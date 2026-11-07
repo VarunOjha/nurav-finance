@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, HttpUrl
 from schemas.common import AsOfDate, CountryCode, CurrencyCode, Money, ORMModel
 from schemas.workspaces import TagRef
 
-AccountType = Literal["checking", "savings", "fixed_deposit", "brokerage", "retirement", "other"]
+AccountType = Literal["checking", "savings", "fixed_deposit", "brokerage", "investment", "retirement", "other"]
 
 
 class IdentifierIn(BaseModel):

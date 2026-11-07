@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, selectinload
 from database import get_db, utcnow
 from dependencies import get_current_workspace
 from models import Holding, Portfolio, PortfolioTag, Snapshot, Workspace
+from models.account import PORTFOLIO_ACCOUNT_TYPES
 from schemas.common import latest_allowed_date
 from schemas.portfolio import (
     Consolidated,
@@ -110,6 +111,12 @@ def _replace_tags(db: Session, workspace: Workspace, p: Portfolio, tag_ids: list
         db.add(PortfolioTag(portfolio_id=p.id, tag_id=tag_id))
 
 
+def _check_account(db: Session, workspace: Workspace, account_id: uuid.UUID) -> None:
+    account = get_account(db, workspace, account_id)  # same workspace, live
+    if account.account_type not in PORTFOLIO_ACCOUNT_TYPES:
+        raise HTTPException(status_code=422, detail="Portfolios belong to brokerage accounts")
+
+
 def _one(db: Session, workspace: Workspace, portfolio_id: uuid.UUID) -> PortfolioSummary:
     db.expire_all()
     p = get_portfolio(db, workspace, portfolio_id)
@@ -168,19 +175,35 @@ def consolidated(workspace: Workspace = Depends(get_current_workspace), db: Sess
                     "asset_class": h.asset_class,
                     "quantity": ZERO,
                     "value": ZERO,
+                    "cost": ZERO,
+                    "cost_known": True,
                     "portfolios": [],
                 },
             )
             merged["quantity"] += h.quantity
             merged["value"] += value
+            cost = holding_cost(h)
+            if cost is None:
+                merged["cost_known"] = False
+            else:
+                merged["cost"] += cost
             if p.name not in merged["portfolios"]:
                 merged["portfolios"].append(p.name)
 
     currencies = []
     for currency, b in sorted(per_currency.items(), key=lambda kv: kv[1]["total"], reverse=True):
         holdings = sorted(b["holdings"].values(), key=lambda h: h["value"], reverse=True)
+        total_cost = sum((h["cost"] for h in holdings if h["cost_known"]), ZERO)
         for h in holdings:
             h["share"] = share(h["value"], b["total"])
+            h["current_price"] = (h["value"] / h["quantity"]).quantize(Decimal("0.000001")) if h["quantity"] else ZERO
+            if h.pop("cost_known") and h["quantity"]:
+                h["avg_buy_price"] = (h["cost"] / h["quantity"]).quantize(Decimal("0.000001"))
+                h["cost_share"] = share(h["cost"], total_cost)
+                h["gain"] = h["value"] - h["cost"]
+                h["gain_pct"] = share(h["gain"], h["cost"]) if h["cost"] else None
+            else:
+                h.update(cost=None, avg_buy_price=None, cost_share=None, gain=None, gain_pct=None)
         currencies.append(
             {
                 "currency": currency,
@@ -199,8 +222,7 @@ def consolidated(workspace: Workspace = Depends(get_current_workspace), db: Sess
 @router.post("", response_model=PortfolioSummary, status_code=status.HTTP_201_CREATED)
 def create_portfolio(body: PortfolioCreate, workspace: Workspace = Depends(get_current_workspace), db: Session = Depends(get_db)) -> PortfolioSummary:
     _check_dates(body.opened_on, body.closed_on)
-    if body.account_id:
-        get_account(db, workspace, body.account_id)  # same workspace, live
+    _check_account(db, workspace, body.account_id)
     p = Portfolio(workspace_id=workspace.id, **body.model_dump(exclude={"tag_ids"}))
     db.add(p)
     db.flush()
@@ -234,8 +256,10 @@ def update_portfolio(
             raise HTTPException(status_code=422, detail="There are snapshots after that closed date")
         if data.get("currency") and data["currency"] != p.currency:
             raise HTTPException(status_code=409, detail="Currency can't change once snapshots are recorded")
-    if data.get("account_id"):
-        get_account(db, workspace, data["account_id"])
+    if "account_id" in data:
+        if data["account_id"] is None:
+            raise HTTPException(status_code=422, detail="A portfolio must belong to an account")
+        _check_account(db, workspace, data["account_id"])
     for field in ("name", "currency"):
         if field in data and data[field] is None:
             del data[field]

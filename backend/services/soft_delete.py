@@ -50,8 +50,9 @@ def delete_account(db: Session, account_id: uuid.UUID, now: datetime | None = No
     now = now or utcnow()
     for model in (AccountIdentifier, AccountLink, AccountTag, BalanceEntry):
         _mark(db, model, model.account_id == account_id, now=now)
-    # Portfolios survive; they just stop pointing at a deleted account.
-    db.execute(update(Portfolio).where(Portfolio.account_id == account_id).values(account_id=None).execution_options(synchronize_session=False))
+    # Portfolios belong to their account, so they (and their snapshots) go with it.
+    for (pid,) in db.execute(select(Portfolio.id).where(Portfolio.account_id == account_id)):
+        delete_portfolio(db, pid, now)
     _mark(db, Account, Account.id == account_id, now=now)
 
 

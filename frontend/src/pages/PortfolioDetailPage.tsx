@@ -7,6 +7,7 @@ import { AllocationDonut, ChartCard, DivergingBars, DivergingLegend, Legend, Lin
 import { ASSET_CLASS_ORDER, OTHER, colorSlices, slotColors } from '../components/charts/palette'
 import { PortfolioFormModal } from '../components/PortfolioFormModal'
 import { Button } from '../components/ui/Button'
+import { BankLogo } from '../components/BankLogo'
 import { Select } from '../components/ui/Field'
 import { ConfirmDialog } from '../components/ui/Modal'
 import { Chip, Empty, ErrorBox, Loading, Page, PageHeader, ShareBar, StatCard, Table, td, th } from '../components/ui/Primitives'
@@ -164,7 +165,12 @@ export default function PortfolioDetailPage() {
             ← Portfolios
           </Link>
         }
-        title={p.name}
+        title={
+          <span className="flex items-center gap-3">
+            <BankLogo institution={p.provider} size="xl" />
+            {p.name}
+          </span>
+        }
         subtitle={
           <>
             {p.provider ?? 'No provider'} · {cur}

@@ -12,3 +12,6 @@ bcrypt==4.0.1
 cryptography==44.0.0
 # OAuth2 form login (/api/auth/token) for the interactive API docs.
 python-multipart==0.0.20
+# Screenshot import: OpenRouter client, and image checks/resizing in memory.
+httpx==0.28.1
+pillow==12.0.0

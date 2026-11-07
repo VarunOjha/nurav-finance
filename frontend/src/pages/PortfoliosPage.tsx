@@ -11,24 +11,27 @@ import {
   RankedBars,
   Sparkline,
   StackedColumns,
-  Swatch,
   type BarRow,
   type StackSeries,
 } from '../components/charts/kit'
 import { ASSET_CLASS_ORDER, OTHER, colorSlices, nameColors, slotColors } from '../components/charts/palette'
-import { PortfolioFormModal } from '../components/PortfolioFormModal'
+import { BankLogo } from '../components/BankLogo'
+import { ConsolidatedHoldingsTable } from '../components/ConsolidatedHoldingsTable'
+import { PortfolioFormModal, afterPortfolioSaved } from '../components/PortfolioFormModal'
 import { Button } from '../components/ui/Button'
-import { Chip, Empty, ErrorBox, Loading, Page, PageHeader, ShareBar, StatCard, Table, Tabs, td, th } from '../components/ui/Primitives'
+import { Chip, Empty, ErrorBox, Loading, Page, PageHeader, StatCard, Table, Tabs, td, th } from '../components/ui/Primitives'
 import { useWorkspace } from '../context/WorkspaceContext'
-import { useConsolidated, usePortfolios } from '../hooks/queries'
+import { useAccounts, useConsolidated, usePortfolios } from '../hooks/queries'
 import { cn } from '../lib/cn'
-import { ASSET_CLASS_LABELS, arrow, deltaClass, formatDate, money, percent, quantity, signedMoney, toNumber } from '../lib/format'
+import { ASSET_CLASS_LABELS, arrow, deltaClass, formatDate, money, percent, signedMoney, toNumber } from '../lib/format'
 import type { CurrencyConsolidation } from '../types/api'
 
 // Portfolios — consolidated view (canvas option B): per-currency totals, the
 // portfolio list, then share / asset-class / merged holdings per currency.
 export default function PortfoliosPage() {
   const { workspace } = useWorkspace()
+  const { data: accounts = [] } = useAccounts()
+  const institutionOf = (id: string) => accounts.find((a) => a.id === id)?.institution
   const navigate = useNavigate()
   const portfolios = usePortfolios()
   const consolidated = useConsolidated()
@@ -110,18 +113,24 @@ export default function PortfoliosPage() {
                 return (
                   <tr key={p.id} className={cn('hover:bg-paper-warm/60', closed && 'text-ink-muted')}>
                     <td className={td}>
-                      <Link to={`/portfolios/${p.id}`} className={cn('text-[13px] font-medium hover:underline', closed ? 'text-ink-muted' : 'text-ink')}>
-                        {p.name}
-                      </Link>
-                      <div className="text-[10px] text-ink-muted mt-0.5">
-                        {p.provider ?? '—'}
-                        {closed && ` · closed ${formatDate(p.closed_on)}`}
+                      <div className="flex items-center gap-3">
+                        <BankLogo institution={p.provider} size="md" />
+                        <div className="min-w-0">
+                          <Link to={`/portfolios/${p.id}`} className={cn('text-[13px] font-medium hover:underline', closed ? 'text-ink-muted' : 'text-ink')}>
+                            {p.name}
+                          </Link>
+                          <div className="text-[10px] text-ink-muted mt-0.5">
+                            {p.provider ?? '—'}
+                            {closed && ` · closed ${formatDate(p.closed_on)}`}
+                          </div>
+                        </div>
                       </div>
                     </td>
                     <td className={cn(td, 'text-[10px] uppercase tracking-widest text-ink-muted')}>{p.currency}</td>
                     <td className={cn(td, 'text-ink-muted')}>
                       {p.account ? (
-                        <Link to={`/accounts/${p.account.id}`} className="hover:underline hover:text-ink">
+                        <Link to={`/accounts/${p.account.id}`} className="inline-flex items-center gap-2 hover:underline hover:text-ink">
+                          <BankLogo institution={institutionOf(p.account.id)} size="xs" />
                           {p.account.name}
                         </Link>
                       ) : (
@@ -181,7 +190,7 @@ export default function PortfoliosPage() {
         </>
       )}
 
-      <PortfolioFormModal open={adding} onOpenChange={setAdding} onSaved={(p) => navigate(`/portfolios/${p.id}`)} />
+      <PortfolioFormModal open={adding} onOpenChange={setAdding} onSaved={(p, o) => navigate(afterPortfolioSaved(p, o))} />
     </Page>
   )
 }
@@ -261,42 +270,13 @@ function CurrencyPanel({ data }: { data: CurrencyConsolidation }) {
         <h2 className="font-mono text-[10px] font-medium uppercase tracking-widest text-ink-muted">
           Consolidated holdings · {data.currency} · {data.holdings.length}
         </h2>
-        <Table>
-          <thead>
-            <tr>
-              <th className={th}>Symbol</th>
-              <th className={th}>Name</th>
-              <th className={th}>Class</th>
-              <th className={cn(th, 'text-right')}>Quantity</th>
-              <th className={cn(th, 'text-right')}>Value</th>
-              <th className={cn(th, 'w-40')}>Share</th>
-              <th className={th}>Held in</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.holdings.map((h) => (
-              <tr key={h.symbol}>
-                <td className={cn(td, 'font-medium')}>{h.symbol}</td>
-                <td className={cn(td, 'text-ink-muted whitespace-normal min-w-[10rem]')}>{h.name ?? '—'}</td>
-                <td className={cn(td, 'text-[10px] uppercase tracking-widest text-ink-muted')}>
-                  <span className="inline-flex items-center gap-1.5">
-                    <Swatch color={classColor(h.asset_class) ?? theme.inkFaint} />
-                    {className(h.asset_class)}
-                  </span>
-                </td>
-                <td className={cn(td, 'text-right num')}>{quantity(h.quantity)}</td>
-                <td className={cn(td, 'text-right num font-medium')}>{money(h.value, data.currency)}</td>
-                <td className={td}>
-                  <div className="flex items-center gap-2">
-                    <ShareBar share={toNumber(h.share) ?? 0} className="w-20" />
-                    <span className="num text-ink-muted">{percent(h.share)}</span>
-                  </div>
-                </td>
-                <td className={cn(td, 'text-ink-muted')}>{h.portfolios.join(', ')}</td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
+        <ConsolidatedHoldingsTable
+          holdings={data.holdings}
+          currency={data.currency}
+          classColor={classColor}
+          className={className}
+          fallbackColor={theme.inkFaint}
+        />
       </div>
     </>
   )

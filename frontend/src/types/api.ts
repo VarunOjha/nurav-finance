@@ -47,7 +47,7 @@ export interface TagRef {
   name: string
 }
 
-export type AccountType = 'checking' | 'savings' | 'fixed_deposit' | 'brokerage' | 'retirement' | 'other'
+export type AccountType = 'checking' | 'savings' | 'fixed_deposit' | 'brokerage' | 'investment' | 'retirement' | 'other'
 
 export interface AccountSummary {
   id: string
@@ -149,7 +149,7 @@ export interface PortfolioInput {
   name: string
   provider: string | null
   currency: string
-  account_id: string | null
+  account_id: string
   opened_on: ISODate | null
   closed_on: ISODate | null
   notes: string | null
@@ -233,6 +233,12 @@ export interface ConsolidatedHolding {
   quantity: Decimal
   value: Decimal
   share: Decimal
+  current_price: Decimal
+  cost: Decimal | null
+  avg_buy_price: Decimal | null
+  cost_share: Decimal | null
+  gain: Decimal | null
+  gain_pct: Decimal | null
   portfolios: string[]
 }
 
@@ -304,3 +310,57 @@ export interface Overview {
     currency: string
   }[]
 }
+
+// ── Screenshot import (backend/routers/screenshot_import.py, services/screenshot) ─
+
+export type ScreenshotField = 'quantity' | 'buy_price' | 'current_price' | 'value' | 'invested'
+
+export interface ScreenshotIssue {
+  /** error: can't be saved as is · warn: numbers disagree or look off · info: worth knowing */
+  level: 'error' | 'warn' | 'info'
+  field: ScreenshotField | 'symbol' | null
+  message: string
+}
+
+export interface ScreenshotRow {
+  id: string
+  symbol: string
+  /** previous: matched to the last snapshot · shown: ticker printed · proposed: made up from the name */
+  symbol_basis: 'previous' | 'shown' | 'proposed'
+  name: string | null
+  asset_class: AssetClass
+  quantity: string | null
+  buy_price: string | null
+  current_price: string | null
+  value: string | null
+  /** The text as printed in the screenshot, per field. */
+  printed: Record<ScreenshotField, string | null>
+  /** Fields worked out by the app (e.g. price = value ÷ quantity). */
+  derived: ScreenshotField[]
+  /** Fields the re-read step corrected; "added" = a row it found that was missed. */
+  rechecked: (ScreenshotField | 'added')[]
+  issues: ScreenshotIssue[]
+}
+
+export interface ScreenshotCheck {
+  kind: 'total' | 'invested' | 'currency' | 'missing' | 'empty'
+  status: 'ok' | 'warn' | 'error' | 'info'
+  message: string
+}
+
+export interface ScreenshotResult {
+  rows: ScreenshotRow[]
+  checks: ScreenshotCheck[]
+  currency_seen: string | null
+  as_of_seen: ISODate | null
+  notes: string[]
+  recheck: string | null
+  screenshots: number
+  model: string
+  cost_usd: number
+}
+
+export type ScreenshotEvent =
+  | { type: 'stage'; stage: 'reading' | 'read' | 'organising' | 'checking' | 'rechecking'; text: string }
+  | { type: 'result'; result: ScreenshotResult }
+  | { type: 'error'; message: string }

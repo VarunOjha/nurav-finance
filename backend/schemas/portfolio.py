@@ -15,7 +15,7 @@ class PortfolioCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     provider: str | None = Field(default=None, max_length=120)
     currency: CurrencyCode
-    account_id: uuid.UUID | None = None
+    account_id: uuid.UUID  # every portfolio belongs to a brokerage account
     opened_on: date | None = None
     closed_on: date | None = None
     notes: str | None = Field(default=None, max_length=2000)
@@ -139,7 +139,14 @@ class ConsolidatedHolding(BaseModel):
     asset_class: str
     quantity: Decimal
     value: Decimal
-    share: Decimal
+    share: Decimal  # of the currency's current value
+    current_price: Decimal  # value / quantity across portfolios
+    # Cost side: None when any portfolio's lot of this symbol has no buy price.
+    cost: Decimal | None
+    avg_buy_price: Decimal | None  # cost / quantity (quantity-weighted across portfolios)
+    cost_share: Decimal | None  # starting stake: cost / Σ cost of the holdings that have one
+    gain: Decimal | None
+    gain_pct: Decimal | None
     portfolios: list[str]
 
 

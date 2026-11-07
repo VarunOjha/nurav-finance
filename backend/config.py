@@ -64,6 +64,14 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = Field(default=720)
     account_number_key: str = Field(default="")
 
+    # Screenshot import (OpenRouter). The key is optional: without it the app
+    # boots and the import says what's missing. The model must accept images.
+    openrouter_api_key: str = Field(default="")
+    openrouter_base_url: str = Field(default="https://openrouter.ai/api/v1")
+    screenshot_model: str = Field(default="anthropic/claude-sonnet-5.5")
+    # Sent as HTTP-Referer / X-Title so OpenRouter can attribute the calls.
+    app_url: str = Field(default="http://localhost:8020")
+
     @classmethod
     def settings_customise_sources(
         cls,

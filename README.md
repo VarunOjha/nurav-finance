@@ -4,6 +4,10 @@ Personal finance tracker for everything you (and the people whose money you
 look after) hold: bank accounts, deposits and brokerage portfolios across
 currencies, with month-over-month history and analytics.
 
+Everything is organised by **financial workspace**: one per person or household whose money you track
+(you, your parents, a joint household…). Pick a workspace in the bar under the header and every page
+(accounts, portfolios, analytics) shows that workspace only.
+
 Local-only app. FastAPI + Postgres (Neon) + React, styled after Nurav Docs.
 
 ## Concepts
@@ -11,12 +15,16 @@ Local-only app. FastAPI + Postgres (Neon) + React, styled after Nurav Docs.
 | Concept | What it means |
 |---|---|
 | **User** | You — sign in with email + password. |
-| **Workspace** | Whose money it is (`Personal`, Parents, Household…). Every account and portfolio belongs to one workspace; the workspace bar under the header picks it and every page follows it. Workspaces are created in **Profile**. `Personal` is created at sign-up; it can be renamed but not deleted. |
-| **Account** | Checking, savings, fixed deposit, brokerage cash… Has a currency, location, free-form identifiers (IFSC, routing no., SWIFT…), links, tags. Account numbers are encrypted at rest and shown masked. |
+| **Workspace** | A financial workspace: whose money it is (`Personal`, Parents, Household…). Every account and portfolio belongs to exactly one workspace, and nothing is shared or totalled across workspaces except your tags. The workspace bar under the header picks it and every page follows it. Workspaces are created, renamed and deleted in **Profile → Workspaces**; one that still has accounts or portfolios can't be deleted. `Personal` is created at sign-up; it can be renamed but not deleted. |
+| **Account** | Checking, savings, fixed deposit, brokerage cash… Has a currency, location, free-form identifiers (IFSC, routing no., SWIFT…), links, tags. Account numbers are encrypted at rest and shown masked. Adding one asks only for the basics (bank, name, holder, type, balance, currency, country); the rest sits under "More details". Types: checking, savings, fixed deposit, brokerage, investment (robo-advisors and managed accounts such as Wealthfront), retirement, other. |
 | **Balance entry** | Append-only. Each entry has an **as-of date** (may be in the past) and a recorded time. The balance on any day is the entry with the latest as-of date on or before it; on the same date, the last one recorded wins. Mistakes are deleted and re-entered, never edited. |
-| **Portfolio** | Holdings at a provider (Fidelity, Zerodha…), optionally linked to its cash account. |
+| **Portfolio** | Holdings at a provider (Fidelity, Zerodha…). Every portfolio belongs to one **Brokerage** account in the same workspace; the API rejects a portfolio without one, or under another account type, and a brokerage account with portfolios can't change type. A brokerage account's page lists its portfolios (value, change, last snapshot) with an **Add portfolio** button that prefills the account, provider and currency; adding a brokerage account also offers to add its portfolio straight away. **Add portfolio** on the Portfolios page starts by choosing the brokerage account. The window has two tabs: **Manual entry** (an as-of date and a holdings table: symbol, name, class, quantity, buy price, current price; saving stores the portfolio and those holdings as its first snapshot, or, left empty, opens the Record snapshot page) and **From screenshots** (pick up to 4 holdings screenshots; after saving, the first-snapshot page reads them straight away). Deleting an account deletes its portfolios and their snapshots too. |
 | **Snapshot** | Immutable, dated list of holdings (symbol, quantity, price). One per portfolio per date; backdated snapshots slot in by date, and comparisons use the previous snapshot by date. |
 | **Tag** | Your labels (savings, trading, emergency-fund…), shared across workspaces. |
+
+**Consolidated holdings.** The Portfolios page merges the latest snapshot of every open portfolio per currency. For each symbol it shows quantity, average buy price (quantity-weighted across portfolios), current price, cost, **starting stake** (its share of total cost, from the buy prices), value, **current share** (its share of today's value), and gain in money and %. Click any column heading to sort; holdings without a buy price in every portfolio show no cost figures, sort last, and are left out of the starting stake.
+
+**Bank logos.** 67 banks, brokers and investment platforms (India, US, UK/Europe, UAE, Singapore and global) are listed in `frontend/src/lib/banks.ts`. Their logos ship with the app in `frontend/public/banks/`, and the app never fetches them. An account's bank and a portfolio's provider show the logo in lists, page headers and pickers; a name that isn't listed gets its initials. To add a bank, add a line to `banks.ts` and run `python scripts/fetch_bank_logos.py` (needs Pillow). It tries the bank's own site icons, then Google's and DuckDuckGo's favicon services, or a named Wikimedia Commons file for sites that block downloads. Federal Bank has no usable logo yet.
 
 Rules that hold everywhere:
 
@@ -25,7 +33,7 @@ Rules that hold everywhere:
   centrally (`backend/database.py`) and are fully ignored — lists, totals, analytics, name/date uniqueness.
 - **Closed ≠ deleted.** A closed account keeps its history up to the closing date; a deleted one disappears.
 - **Analytics are computed on read**, so backdated data reflows automatically.
-- **A portfolio's linked account isn't counted twice.** While the portfolio is open, analytics count that account's money through the portfolio's holdings and leave the account out. Once the portfolio is closed, the account counts again.
+- **A portfolio's account isn't counted twice.** While the portfolio is open, analytics count that account's money through the portfolio's holdings and leave the account out. Once the portfolio is closed, the account counts again.
 
 ## Run it
 
@@ -42,6 +50,19 @@ Prerequisites: Docker Desktop, and a `nurav-finance` app in the nurav-creds vaul
 4. Open http://localhost:8020 and register.
 
 Migrations run automatically on start (`alembic upgrade head`). API docs: http://localhost:8020/api/docs.
+All workspace-scoped API calls send the workspace in an `X-Workspace-Id` header.
+
+**Start over with an empty database** (deletes every user, workspace, account and portfolio):
+
+```bash
+docker exec -i nurav-finance python - <<'EOF'
+from sqlalchemy import create_engine, text
+from config import settings
+with create_engine(settings.database_url).begin() as c:
+    c.execute(text("DROP SCHEMA public CASCADE; CREATE SCHEMA public;"))
+EOF
+docker restart nurav-finance      # recreates the tables; then register again
+```
 
 The app refuses to start if any vault key is missing, `JWT_SECRET` is shorter than 32 characters, or
 `ACCOUNT_NUMBER_KEY` isn't a valid Fernet key. Error messages name the key but never print values.
@@ -51,6 +72,8 @@ The app refuses to start if any vault key is missing, `JWT_SECRET` is shorter th
 | `nurav-creds is missing required keys: …` | Add the named keys to the `nurav-finance` vault app, then `docker compose up -d --force-recreate`. |
 | `database "…" does not exist` | Create that database in Neon (see `.env.reference`), then restart. |
 | `ACCOUNT_NUMBER_KEY is not a valid Fernet key` | Regenerate it with the command above, but only if no account numbers are stored yet. |
+| Screenshot import says the OpenRouter key is missing | Add `OPENROUTER_API_KEY` to the `nurav-finance` vault app, then `docker compose up -d --force-recreate`. |
+| `Can't locate revision identified by '0002'` (or `'0005'`) | The database predates the 2026-11-05 reset, when tenants became workspaces and migrations were squashed into one `0001`. Start over with an empty database (above). |
 
 ## Forms and validation
 
@@ -102,6 +125,48 @@ so a range copied from a spreadsheet pastes as-is. Quote any value that contains
 include currency symbols or signs, but thousands separators are fine. Blank lines and lines starting with
 `#` are skipped. Each problem is reported with its line number.
 
+### Holdings from screenshots
+
+On **Record snapshot**, **From screenshots** reads your holdings from up to 4 screenshots of a broker's or
+fund platform's holdings page, from the phone app or the website. Drop them in, choose them, or paste one
+with Ctrl+V. For a long list, take one screenshot per screen: overlapping rows are merged.
+
+It runs in steps, each with one job. The AI steps only copy and choose text; every number you see is
+calculated by the app.
+
+1. **Read** (AI, one call per screenshot, all at once): copies every row, column heading and total exactly
+   as printed. Tall phone screenshots are cut into overlapping pieces first so small text stays readable.
+2. **Organise** (AI): merges rows that appear in more than one screenshot, decides which text is quantity,
+   average cost, current price, value and invested, and matches names to the symbols in your last snapshot
+   (a cut-off fund name still finds its symbol). Otherwise it uses the printed ticker or proposes one.
+3. **Check** (code): parses broker number formats (`₹1,23,456.70`, `1.2L`, `3.4 Cr`, `(450.20)`), fills in
+   what wasn't printed (price = value ÷ quantity, buy price = invested ÷ quantity), and checks that
+   quantity × price matches each printed value and that the rows add up to the screenshot's total. It also
+   compares with the last snapshot: a quantity ×5 or ÷5 is flagged, and holdings that aren't in the
+   screenshots are listed because they'll count as sold.
+4. **Re-read** (AI, only when step 3 finds a mismatch): looks at the screenshots again for exactly the
+   values in question, and for rows that were missed. Then step 3 runs again.
+
+You then review everything in a table you can edit:
+
+- Rows that can't be saved (no symbol, quantity or price, or a duplicate) must be fixed first.
+- Warnings (marked `!`) must be acknowledged with a tick box.
+- Cells the app calculated or the re-read corrected are shaded; hover over one to see the screenshot's
+  text.
+- If the screenshots show a date, you're offered it as the snapshot date.
+
+**Use holdings** fills the snapshot table, and you still review it and press **Save snapshot**.
+
+**Privacy**:
+- Images are handled in memory for one request only. They're never written to disk, the database or the
+  logs, and photo metadata (EXIF, location) is stripped before sending.
+- The reading steps are told not to copy account numbers, names, emails or phone numbers.
+
+**Setup**: needs `OPENROUTER_API_KEY` in the `nurav-finance` vault app. The model is `SCREENSHOT_MODEL`
+(default `anthropic/claude-sonnet-5.5`), and an import costs about $0.03–0.05. The code is in
+`backend/services/screenshot/` and the route is `POST /api/portfolios/{id}/snapshots/screenshot`. It streams
+its progress, then returns a proposal and saves nothing.
+
 ## Develop
 
 ```bash
@@ -109,14 +174,14 @@ include currency symbols or signs, but thousands separators are fine. Blank line
 docker compose -f docker-compose.test.yml up -d        # stop with: docker compose -f docker-compose.test.yml down
 cd backend
 python -m venv .venv && .venv/Scripts/pip install -r requirements-dev.txt   # once
-.venv/Scripts/python -m pytest                                 # workspaces, backdating, soft deletes, snapshots, analytics, config, validation
+.venv/Scripts/python -m pytest                                 # workspaces, backdating, soft deletes, snapshots, analytics, screenshot import (scripted model), config, validation
 .venv/Scripts/ruff check . && .venv/Scripts/ruff format --check .
 
 # Frontend
 cd frontend
 npm install                      # once
 npm run dev                      # http://localhost:5180, proxies /api to :8020
-npm test                         # Vitest (validators, date picker, password toggle, workspace switcher)
+npm test                         # Vitest (validators, amounts, CSV, screenshot import, date picker, password toggle, workspace switcher, analytics)
 npm run build                    # type-check + production bundle
 ```
 
@@ -138,20 +203,27 @@ backend/
   database.py        engine, session, global soft-delete filter
   models/            users, workspaces, tags, accounts (+ identifiers, links, balance entries),
                      portfolios (+ snapshots, holdings)
-  routers/           /api/auth, workspaces, tags, accounts, portfolios, analytics
+  routers/           /api/auth, workspaces, tags, accounts, portfolios (+ screenshot import), analytics
   schemas/           request/response models and input validation (auth.py: phone, birth date)
   dependencies.py    current user (JWT) and current workspace (X-Workspace-Id header)
-  services/          ledger (point-in-time maths), holdings (diffs), analytics,
-                     soft_delete (cascades), crypto (Fernet), security (bcrypt + JWT)
-  alembic/           migrations
+  services/          ledger (point-in-time maths), holdings (diffs), analytics, access (workspace ownership),
+                     soft_delete (cascades), crypto (Fernet), security (bcrypt + JWT),
+                     screenshot/ (image prep, OpenRouter client, read/organise/re-read steps, checks)
+  alembic/           migrations (one squashed 0001 since the 2026-11-05 reset)
   tests/             pytest against real Postgres
 frontend/src/
   api/               axios client (JWT + X-Workspace-Id headers) and endpoint wrappers
   context/           auth and selected-workspace state
   hooks/queries.ts   TanStack Query hooks; cache keys are scoped by workspace
-  components/        AppLayout (header, drawer, footer), WorkspaceSwitcher, Logo, account/portfolio form modals
+  components/        AppLayout (header, drawer, footer), WorkspaceSwitcher, ProfileModal (profile, workspaces, tags),
+                     ThemePicker, Logo, account/portfolio form modals, BankPicker + BankLogo, HoldingsCsvModal,
+                     ScreenshotImportModal, ConsolidatedHoldingsTable, charts/
   components/ui/     Button, Modal, Field (Input, PasswordInput, Select…), DateField, table/chip primitives
-  lib/               formatting, validators (validate.ts), class helper
+  lib/               formatting, amounts (amount.ts), validators (validate.ts), holdings CSV parser, screenshot upload stream,
+                     holdingRows (editable holdings rows + checks), pendingScreenshots (Add portfolio → snapshot hand-off),
+                     banks + bankLogos.json, growth velocity, theme, class helper
   pages/             Login, Accounts, Account detail, Portfolios, Portfolio detail,
                      Record snapshot, Analytics, Profile
+frontend/public/banks/  bundled bank and broker logos (PNG)
+scripts/fetch_bank_logos.py  one-off: downloads the logos and writes bankLogos.json
 ```

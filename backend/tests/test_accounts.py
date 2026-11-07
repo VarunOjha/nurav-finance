@@ -103,3 +103,10 @@ def test_status_filter(api: Api):
     assert names("active") == ["Open"]
     assert names("closed") == ["Old"]
     assert set(names("all")) == {"Open", "Old"}
+
+
+def test_investment_account_type(api: Api):
+    acc = api.account(name="Wealthfront Automated", institution="Wealthfront", account_type="investment", currency="USD")
+    assert acc["account_type"] == "investment"
+    assert api.patch(f"/api/accounts/{acc['id']}", json={"account_type": "brokerage"}).json()["account_type"] == "brokerage"
+    assert api.post("/api/accounts", json={"name": "X", "account_type": "robo", "currency": "USD"}).status_code == 422

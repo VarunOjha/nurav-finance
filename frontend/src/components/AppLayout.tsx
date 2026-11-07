@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useSearchParams } from 'react-router-dom'
 import * as Popover from '@radix-ui/react-popover'
-import { BarChart3, Landmark, Menu, Palette, UserCircle } from 'lucide-react'
+import { BarChart3, Briefcase, Landmark, Menu, Palette, UserCircle } from 'lucide-react'
 import { Logo } from './Logo'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { ThemePicker } from './ThemePicker'
@@ -13,6 +13,7 @@ const ProfileModal = lazy(() => import('./ProfileModal'))
 
 const NAV = [
   { to: '/accounts', label: 'Accounts', icon: Landmark },
+  { to: '/portfolios', label: 'Portfolios', icon: Briefcase },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
 ] as const
 
