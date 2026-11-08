@@ -4,7 +4,7 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { apiErrorMessage } from '../api/client'
 import { axisTick, useChartTheme, type ChartTheme } from '../components/charts/chartTheme'
 import { AllocationDonut, ChartCard, ChartTooltip, Legend, Lines, Swatch, VelocityColumns } from '../components/charts/kit'
-import { ACCOUNT_TYPE_ORDER, ASSET_CLASS_ORDER, colorSlices, nameColors, slotColors } from '../components/charts/palette'
+import { ACCOUNT_TYPE_ORDER, ALLOCATION_CLASS_ORDER, colorSlices, nameColors, slotColors } from '../components/charts/palette'
 import { Input, Select } from '../components/ui/Field'
 import { Empty, ErrorBox, Loading, Page, PageHeader, Segmented } from '../components/ui/Primitives'
 import { useWorkspace } from '../context/WorkspaceContext'
@@ -410,33 +410,48 @@ function VelocitySection({ data, scope, columns }: { data: Overview; scope: Scop
   )
 }
 
+// Account balances in "What it's in": deposits are Cash; investment and retirement
+// balances are invested in something not recorded, so they get their own slice.
+const ALLOCATION_CLASS_LABELS: Record<string, string> = { ...ASSET_CLASS_LABELS, unclassified: 'Fund · unclassified' }
+
 function labelFor(tab: AllocationTab, label: string): string {
   if (tab === 'by_type') return ACCOUNT_TYPE_LABELS[label] ?? label
-  if (tab === 'by_asset_class') return ASSET_CLASS_LABELS[label] ?? label
+  if (tab === 'by_asset_class') return ALLOCATION_CLASS_LABELS[label] ?? label
   return label
 }
 
-const ALLOCATION_VIEWS: { value: AllocationTab; label: string }[] = [
-  { value: 'by_type', label: 'By type' },
-  { value: 'by_asset_class', label: 'By asset class' },
-  { value: 'by_tag', label: 'By tag' },
+const ALLOCATION_VIEWS: { value: AllocationTab; label: string; note: string }[] = [
+  {
+    value: 'by_type',
+    label: "Where it's held",
+    note: 'By account type. A portfolio counts as part of the brokerage account it belongs to.',
+  },
+  {
+    value: 'by_asset_class',
+    label: "What it's in",
+    note: 'Checking, savings, fixed deposits and uninvested brokerage cash are Cash. Portfolio holdings use their own class. Investment and retirement account balances are shown as Fund · unclassified, because what they hold isn’t recorded.',
+  },
+  { value: 'by_tag', label: 'By tag', note: 'An item with several tags counts towards each, so shares can add up to more than 100%.' },
 ]
 
-function AllocationGroup({ data, view, label }: { data: Overview; view: AllocationTab; label: string }) {
+function AllocationGroup({ data, view, label, note }: { data: Overview; view: AllocationTab; label: string; note: string }) {
   const theme = useChartTheme()
   const groups: CurrencyAllocation[] = data.allocation[view]
   const colorOf =
     view === 'by_type'
       ? slotColors(theme, ACCOUNT_TYPE_ORDER)
       : view === 'by_asset_class'
-        ? slotColors(theme, ASSET_CLASS_ORDER)
+        ? slotColors(theme, ALLOCATION_CLASS_ORDER)
         : nameColors(
             theme,
             groups.flatMap((g) => g.slices.map((x) => x.label)),
           )
   return (
     <div className="flex flex-col gap-3">
-      <h3 className="font-mono text-xs uppercase tracking-widest text-ink">{label}</h3>
+      <div className="flex flex-col gap-1">
+        <h3 className="font-mono text-xs uppercase tracking-widest text-ink">{label}</h3>
+        <p className="font-mono text-[10px] text-ink-muted">{note}</p>
+      </div>
       {groups.length === 0 ? (
         <p className="font-mono text-[11px] text-ink-muted">Nothing to allocate yet.</p>
       ) : (
@@ -448,9 +463,6 @@ function AllocationGroup({ data, view, label }: { data: Overview; view: Allocati
           ))}
         </div>
       )}
-      {view === 'by_tag' && groups.length > 0 && (
-        <p className="font-mono text-[10px] text-ink-faint">An item with several tags counts towards each, so shares can add up to more than 100%.</p>
-      )}
     </div>
   )
 }
@@ -460,7 +472,7 @@ function AllocationSection({ data }: { data: Overview }) {
     <section className="flex flex-col gap-6">
       <h2 className={sectionTitle}>Allocation · today</h2>
       {ALLOCATION_VIEWS.map((v) => (
-        <AllocationGroup key={v.value} data={data} view={v.value} label={v.label} />
+        <AllocationGroup key={v.value} data={data} view={v.value} label={v.label} note={v.note} />
       ))}
     </section>
   )
@@ -470,7 +482,8 @@ const TOP_N = 10
 
 function assetDetail(a: TopAsset): string {
   if (a.kind === 'account') return ACCOUNT_TYPE_LABELS[a.group] ?? a.group
-  const parts = [ASSET_CLASS_LABELS[a.group] ?? a.group, a.held_in.join(', ')]
+  // Shown in the hover title only; the row itself is just the name.
+  const parts = [ASSET_CLASS_LABELS[a.group] ?? a.group]
   if (a.symbol && a.symbol !== a.name) parts.unshift(a.symbol)
   return parts.filter(Boolean).join(' · ')
 }
@@ -520,7 +533,6 @@ export function TopAssetsSection({ data, scope, columns }: { data: Overview; sco
                           <span className="font-mono text-[10px] text-ink-faint num">{i + 1}</span>
                           <div className="min-w-0 flex flex-col gap-1">
                             <span className="font-mono text-xs text-ink truncate">{a.name}</span>
-                            <span className="font-mono text-[10px] text-ink-muted truncate">{detail}</span>
                             <span className="block h-1.5 bg-paper-warm" aria-hidden>
                               <span
                                 className="block h-full rounded-r"

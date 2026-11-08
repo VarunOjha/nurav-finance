@@ -114,7 +114,6 @@ export const ACCOUNT_TYPE_LABELS: Record<string, string> = {
   investment: 'Investment',
   retirement: 'Retirement',
   other: 'Other',
-  portfolio: 'Portfolio',
 }
 
 // Every portfolio belongs to one account of these types (the backend enforces it too).

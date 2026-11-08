@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import * as Popover from '@radix-ui/react-popover'
 import { Check, ChevronDown } from 'lucide-react'
 import { useWorkspace } from '../context/WorkspaceContext'
@@ -15,7 +15,20 @@ function counts(accounts: number, portfolios: number): string {
 export function WorkspaceSwitcher() {
   const { workspaces, workspace, selectWorkspace } = useWorkspace()
   const [open, setOpen] = useState(false)
+  const { pathname } = useLocation()
+  const navigate = useNavigate()
   if (!workspace) return null
+
+  // An account or portfolio belongs to one workspace, so switching away from its
+  // page lands on the section list instead.
+  const pick = (id: string) => {
+    if (id !== workspace.id) {
+      const [section, detail] = pathname.split('/').filter(Boolean)
+      if (section && detail) navigate(`/${section}`)
+    }
+    selectWorkspace(id)
+    setOpen(false)
+  }
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
@@ -46,10 +59,7 @@ export function WorkspaceSwitcher() {
                   <button
                     role="option"
                     aria-selected={selected}
-                    onClick={() => {
-                      selectWorkspace(t.id)
-                      setOpen(false)
-                    }}
+                    onClick={() => pick(t.id)}
                     className="w-full flex items-start gap-3 px-4 py-3 border-b border-line text-left hover:bg-paper-warm focus:outline-none focus-visible:bg-paper-warm"
                   >
                     <span className="w-3.5 pt-0.5 shrink-0">{selected && <Check className="w-3.5 h-3.5" aria-hidden="true" />}</span>

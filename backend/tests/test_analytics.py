@@ -108,6 +108,24 @@ def test_linked_account_counts_through_its_portfolio_while_open(api: Api):
     usd = next(c for c in data["currencies"] if c["currency"] == "USD")
     assert usd["current_accounts"] is None and usd["account_count"] == 0
     by_type = {s["label"] for s in data["allocation"]["by_type"][0]["slices"]}
-    assert by_type == {"portfolio"}
+    assert by_type == {"brokerage"}  # a portfolio counts as its brokerage account, never a type of its own
     trading = next(t for t in data["tags"] if t["tag"] == "trading")
     assert trading["currencies"][0]["values"] == [None, None]
+
+
+def test_allocation_lenses_agree_on_where_and_what(api: Api):
+    """By type = where money is held; by asset class = what it is in. Same money, matching labels."""
+    savings = api.account(name="Savings", currency="USD", account_type="savings")
+    ira = api.account(name="IRA", currency="USD", account_type="retirement")
+    broker = api.account(name="Broker", currency="USD", account_type="brokerage")
+    api.balance(savings["id"], "100", "2024-01-10")
+    api.balance(ira["id"], "300", "2024-01-10")
+    port = api.portfolio(name="Broker holdings", currency="USD", account_id=broker["id"])
+    api.snapshot(port["id"], "2024-01-20", [("VTI", 2, 100, "etf")])
+
+    alloc = _overview(api, today=date(2024, 2, 1))["allocation"]
+    by_type = {s["label"]: str(s["value"]) for s in alloc["by_type"][0]["slices"]}
+    assert by_type == {"savings": "100.0000", "retirement": "300.0000", "brokerage": "200.0000"}
+    by_class = {s["label"]: str(s["value"]) for s in alloc["by_asset_class"][0]["slices"]}
+    # The IRA balance is invested in something unknown — not cash.
+    assert by_class == {"cash": "100.0000", "unclassified": "300.0000", "etf": "200.0000"}

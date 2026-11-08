@@ -248,6 +248,9 @@ export interface CurrencyConsolidation {
   previous_total: Decimal | null
   by_portfolio: AllocationSlice[]
   by_asset_class: AllocationSlice[]
+  // Cost side, over the holdings that have a buy price in every portfolio.
+  cost_by_portfolio: AllocationSlice[]
+  cost_by_asset_class: AllocationSlice[]
   holdings: ConsolidatedHolding[]
   months: string[] // YYYY-MM, last 12; current month as of today
   history: { portfolio: string; values: Series }[] // sorted by name

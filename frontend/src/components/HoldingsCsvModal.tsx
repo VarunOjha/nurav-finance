@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Button } from './ui/Button'
 import { TextArea } from './ui/Field'
 import { Modal } from './ui/Modal'
-import { Table, td, th } from './ui/Primitives'
+import { Table, onlyBelow, showFrom, td, th } from './ui/Primitives'
 import { cn } from '../lib/cn'
 import { ASSET_CLASS_LABELS, money, quantity } from '../lib/format'
 import { ASSET_CLASSES, HOLDINGS_CSV_TEMPLATE, parseHoldingsCsv, type CsvHolding, type CsvResult } from '../lib/holdingsCsv'
@@ -135,26 +135,31 @@ export function HoldingsCsvModal({ open, onOpenChange, currency, onAccept }: Pro
             <Table>
               <thead>
                 <tr>
-                  <th className={th}>Line</th>
+                  <th className={cn(th, showFrom.md)}>Line</th>
                   <th className={th}>Symbol</th>
-                  <th className={th}>Name</th>
-                  <th className={th}>Class</th>
-                  <th className={cn(th, 'text-right')}>Quantity</th>
-                  <th className={cn(th, 'text-right')}>Buy price · {currency}</th>
-                  <th className={cn(th, 'text-right')}>Current price · {currency}</th>
+                  <th className={cn(th, showFrom.xl)}>Name</th>
+                  <th className={cn(th, showFrom.lg)}>Class</th>
+                  <th className={cn(th, 'text-right', showFrom.sm)}>Quantity</th>
+                  <th className={cn(th, 'text-right', showFrom.lg)}>Buy price · {currency}</th>
+                  <th className={cn(th, 'text-right', showFrom.md)}>Current price · {currency}</th>
                   <th className={cn(th, 'text-right')}>Value</th>
                 </tr>
               </thead>
               <tbody>
                 {result.holdings.map((h) => (
                   <tr key={h.symbol}>
-                    <td className={cn(td, 'text-ink-muted')}>{h.line}</td>
-                    <td className={cn(td, 'font-medium')}>{h.symbol}</td>
-                    <td className={td}>{h.name ?? '—'}</td>
-                    <td className={cn(td, 'text-[10px] uppercase tracking-widest text-ink-muted')}>{ASSET_CLASS_LABELS[h.asset_class]}</td>
-                    <td className={cn(td, 'text-right num')}>{quantity(h.quantity)}</td>
-                    <td className={cn(td, 'text-right num')}>{h.buy_price === null ? '—' : money(h.buy_price, currency)}</td>
-                    <td className={cn(td, 'text-right num')}>{money(h.current_price, currency)}</td>
+                    <td className={cn(td, 'text-ink-muted', showFrom.md)}>{h.line}</td>
+                    <td className={cn(td, 'whitespace-normal')}>
+                      <div className="font-medium">{h.symbol}</div>
+                      <div className={cn('text-[10px] text-ink-muted mt-0.5', onlyBelow.xl)}>
+                        {[h.name, ASSET_CLASS_LABELS[h.asset_class]].filter(Boolean).join(' · ')}
+                      </div>
+                    </td>
+                    <td className={cn(td, 'whitespace-normal', showFrom.xl)}>{h.name ?? '—'}</td>
+                    <td className={cn(td, 'text-[10px] uppercase tracking-widest text-ink-muted', showFrom.lg)}>{ASSET_CLASS_LABELS[h.asset_class]}</td>
+                    <td className={cn(td, 'text-right num', showFrom.sm)}>{quantity(h.quantity)}</td>
+                    <td className={cn(td, 'text-right num', showFrom.lg)}>{h.buy_price === null ? '—' : money(h.buy_price, currency)}</td>
+                    <td className={cn(td, 'text-right num', showFrom.md)}>{money(h.current_price, currency)}</td>
                     <td className={cn(td, 'text-right num')}>{money(Number(h.quantity) * Number(h.current_price), currency)}</td>
                   </tr>
                 ))}

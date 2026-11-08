@@ -7,7 +7,7 @@ import { Button } from './ui/Button'
 import { DateField } from './ui/DateField'
 import { FormError, Input, PasswordInput, Select } from './ui/Field'
 import { ConfirmDialog, Modal } from './ui/Modal'
-import { Chip, Loading, Table, td, th } from './ui/Primitives'
+import { Chip, Loading, Table, onlyBelow, showFrom, td, th } from './ui/Primitives'
 import { useAuth } from '../context/AuthContext'
 import { useWorkspace } from '../context/WorkspaceContext'
 import { useTagMutations, useTags, useWorkspaceMutations } from '../hooks/queries'
@@ -347,10 +347,10 @@ function WorkspacesSection({ focus }: { focus: boolean }) {
           <thead>
             <tr>
               <th className={th}>Workspace</th>
-              <th className={th}>Description</th>
-              <th className={cn(th, 'text-right')}>Accounts</th>
-              <th className={cn(th, 'text-right')}>Portfolios</th>
-              <th className={th}>Created</th>
+              <th className={cn(th, showFrom.md)}>Description</th>
+              <th className={cn(th, 'text-right', showFrom.sm)}>Accounts</th>
+              <th className={cn(th, 'text-right', showFrom.sm)}>Portfolios</th>
+              <th className={cn(th, showFrom.lg)}>Created</th>
               <th className={th}>
                 <span className="sr-only">Actions</span>
               </th>
@@ -362,15 +362,19 @@ function WorkspacesSection({ focus }: { focus: boolean }) {
               const hasData = t.account_count > 0 || t.portfolio_count > 0
               return (
                 <tr key={t.id}>
-                  <td className={td}>
+                  <td className={cn(td, 'whitespace-normal')}>
                     <span className="uppercase tracking-widest font-medium">{t.name}</span>
                     {t.is_default && <span className={badge}>default</span>}
                     {active && <span className={badge}>active</span>}
+                    {t.description && <div className={cn('text-[10px] text-ink-muted mt-0.5', onlyBelow.md)}>{t.description}</div>}
+                    <div className={cn('text-[10px] text-ink-muted mt-0.5', onlyBelow.sm)}>
+                      {t.account_count} accounts · {t.portfolio_count} portfolios
+                    </div>
                   </td>
-                  <td className={cn(td, 'text-ink-muted whitespace-normal min-w-[12rem]')}>{t.description ?? '—'}</td>
-                  <td className={cn(td, 'text-right num')}>{t.account_count}</td>
-                  <td className={cn(td, 'text-right num')}>{t.portfolio_count}</td>
-                  <td className={cn(td, 'text-ink-muted')}>{formatDate(t.created_at.slice(0, 10))}</td>
+                  <td className={cn(td, 'text-ink-muted whitespace-normal min-w-[12rem]', showFrom.md)}>{t.description ?? '—'}</td>
+                  <td className={cn(td, 'text-right num', showFrom.sm)}>{t.account_count}</td>
+                  <td className={cn(td, 'text-right num', showFrom.sm)}>{t.portfolio_count}</td>
+                  <td className={cn(td, 'text-ink-muted', showFrom.lg)}>{formatDate(t.created_at.slice(0, 10))}</td>
                   <td className={cn(td, 'text-right py-0')}>
                     <div className="inline-flex items-center gap-1">
                       {!active && (
@@ -527,9 +531,9 @@ function TagsSection() {
           <thead>
             <tr>
               <th className={th}>Tag</th>
-              <th className={th}>Description</th>
-              <th className={cn(th, 'text-right')}>Accounts</th>
-              <th className={cn(th, 'text-right')}>Portfolios</th>
+              <th className={cn(th, showFrom.md)}>Description</th>
+              <th className={cn(th, 'text-right', showFrom.sm)}>Accounts</th>
+              <th className={cn(th, 'text-right', showFrom.sm)}>Portfolios</th>
               <th className={th}>
                 <span className="sr-only">Actions</span>
               </th>
@@ -538,12 +542,16 @@ function TagsSection() {
           <tbody>
             {tags.map((t) => (
               <tr key={t.id}>
-                <td className={td}>
+                <td className={cn(td, 'whitespace-normal')}>
                   <Chip>{t.name}</Chip>
+                  {t.description && <div className={cn('text-[10px] text-ink-muted mt-1', onlyBelow.md)}>{t.description}</div>}
+                  <div className={cn('text-[10px] text-ink-muted mt-0.5', onlyBelow.sm)}>
+                    {t.account_count} accounts · {t.portfolio_count} portfolios
+                  </div>
                 </td>
-                <td className={cn(td, 'text-ink-muted whitespace-normal min-w-[12rem]')}>{t.description ?? '—'}</td>
-                <td className={cn(td, 'text-right num')}>{t.account_count}</td>
-                <td className={cn(td, 'text-right num')}>{t.portfolio_count}</td>
+                <td className={cn(td, 'text-ink-muted whitespace-normal min-w-[12rem]', showFrom.md)}>{t.description ?? '—'}</td>
+                <td className={cn(td, 'text-right num', showFrom.sm)}>{t.account_count}</td>
+                <td className={cn(td, 'text-right num', showFrom.sm)}>{t.portfolio_count}</td>
                 <td className={cn(td, 'text-right py-0')}>
                   <div className="inline-flex items-center gap-1">
                     <button type="button" className={iconBtn} aria-label={`Edit tag ${t.name}`} onClick={() => setModal({ open: true, tag: t })}>

@@ -10,7 +10,7 @@ import { Button } from '../components/ui/Button'
 import { BankLogo } from '../components/BankLogo'
 import { Select } from '../components/ui/Field'
 import { ConfirmDialog } from '../components/ui/Modal'
-import { Chip, Empty, ErrorBox, Loading, Page, PageHeader, ShareBar, StatCard, Table, td, th } from '../components/ui/Primitives'
+import { Chip, Empty, ErrorBox, Loading, Page, PageHeader, ShareBar, StatCard, Table, onlyBelow, showFrom, td, th } from '../components/ui/Primitives'
 import { usePortfolio, usePortfolioMutations, useSnapshotComparison, useSnapshots } from '../hooks/queries'
 import { cn } from '../lib/cn'
 import {
@@ -160,11 +160,6 @@ export default function PortfolioDetailPage() {
   return (
     <Page>
       <PageHeader
-        back={
-          <Link to="/portfolios" className="font-mono text-xs uppercase tracking-widest text-ink-muted hover:text-ink hover:underline">
-            ← Portfolios
-          </Link>
-        }
         title={
           <span className="flex items-center gap-3">
             <BankLogo institution={p.provider} size="xl" />
@@ -321,15 +316,15 @@ export default function PortfolioDetailPage() {
                 <thead>
                   <tr>
                     <th className={th}>Symbol</th>
-                    <th className={th}>Name</th>
-                    <th className={th}>Class</th>
-                    <th className={cn(th, 'text-right')}>Qty</th>
-                    <th className={cn(th, 'text-right')}>Buy price</th>
-                    <th className={cn(th, 'text-right')}>Current price</th>
+                    <th className={cn(th, showFrom['2xl'])}>Name</th>
+                    <th className={cn(th, showFrom.xl)}>Class</th>
+                    <th className={cn(th, 'text-right', showFrom.xl)}>Qty</th>
+                    <th className={cn(th, 'text-right', showFrom.xl)}>Buy price</th>
+                    <th className={cn(th, 'text-right', showFrom.lg)}>Current price</th>
                     <th className={cn(th, 'text-right')}>Value</th>
-                    <th className={cn(th, 'text-right')}>Gain</th>
-                    <th className={cn(th, 'text-right')}>Δ value</th>
-                    <th className={cn(th, 'w-40')}>Weight</th>
+                    <th className={cn(th, 'text-right', showFrom.sm)}>Gain</th>
+                    <th className={cn(th, 'text-right', showFrom.lg)}>Δ value</th>
+                    <th className={cn(th, 'w-40', showFrom.md)}>Weight</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -338,7 +333,7 @@ export default function PortfolioDetailPage() {
                     const change = qtyChange(h)
                     return (
                       <tr key={h.symbol} className={cn(sold && 'text-ink-muted')}>
-                        <td className={td}>
+                        <td className={cn(td, 'whitespace-normal')}>
                           <span className={cn('font-medium', sold && 'line-through text-ink-muted')}>{h.symbol}</span>
                           {h.status === 'new' && (
                             <Chip active className="ml-2 uppercase">
@@ -351,16 +346,26 @@ export default function PortfolioDetailPage() {
                               {change}
                             </Chip>
                           )}
+                          <div className={cn('text-[10px] text-ink-muted mt-0.5', onlyBelow['2xl'])}>
+                            {h.name && <span>{h.name}</span>}
+                            <span className={onlyBelow.xl}>
+                              {h.name && ' · '}
+                              {ASSET_CLASS_LABELS[h.asset_class] ?? h.asset_class}
+                            </span>
+                          </div>
                         </td>
-                        <td className={cn(td, 'text-ink-muted whitespace-normal min-w-[10rem]')}>{h.name ?? '—'}</td>
-                        <td className={cn(td, 'text-[10px] uppercase tracking-widest text-ink-muted')}>{ASSET_CLASS_LABELS[h.asset_class] ?? h.asset_class}</td>
-                        <td className={cn(td, 'text-right num')}>{sold ? quantity(h.previous_quantity) : quantity(h.quantity)}</td>
-                        <td className={cn(td, 'text-right num')}>{h.buy_price ? money(h.buy_price, cur) : '—'}</td>
-                        <td className={cn(td, 'text-right num')}>{h.current_price ? money(h.current_price, cur) : '—'}</td>
-                        <td className={cn(td, 'text-right num font-medium', sold && 'text-ink-muted font-normal')}>{money(h.value, cur)}</td>
-                        <td className={cn(td, 'text-right num', deltaClass(h.gain))}>{h.gain === null ? '—' : signedMoney(h.gain, cur)}</td>
-                        <td className={cn(td, 'text-right num', deltaClass(h.value_change))}>{cmp.previous ? signedMoney(h.value_change, cur) : '—'}</td>
-                        <td className={td}>
+                        <td className={cn(td, 'text-ink-muted whitespace-normal min-w-[10rem]', showFrom['2xl'])}>{h.name ?? '—'}</td>
+                        <td className={cn(td, 'text-[10px] uppercase tracking-widest text-ink-muted', showFrom.xl)}>{ASSET_CLASS_LABELS[h.asset_class] ?? h.asset_class}</td>
+                        <td className={cn(td, 'text-right num', showFrom.xl)}>{sold ? quantity(h.previous_quantity) : quantity(h.quantity)}</td>
+                        <td className={cn(td, 'text-right num', showFrom.xl)}>{h.buy_price ? money(h.buy_price, cur) : '—'}</td>
+                        <td className={cn(td, 'text-right num', showFrom.lg)}>{h.current_price ? money(h.current_price, cur) : '—'}</td>
+                        <td className={cn(td, 'text-right num')}>
+                          <div className={cn('font-medium', sold && 'text-ink-muted font-normal')}>{money(h.value, cur)}</div>
+                          {h.gain !== null && <div className={cn('text-[10px] mt-0.5', deltaClass(h.gain), onlyBelow.sm)}>{signedMoney(h.gain, cur)}</div>}
+                        </td>
+                        <td className={cn(td, 'text-right num', deltaClass(h.gain), showFrom.sm)}>{h.gain === null ? '—' : signedMoney(h.gain, cur)}</td>
+                        <td className={cn(td, 'text-right num', deltaClass(h.value_change), showFrom.lg)}>{cmp.previous ? signedMoney(h.value_change, cur) : '—'}</td>
+                        <td className={cn(td, showFrom.md)}>
                           <div className="flex items-center gap-2">
                             <ShareBar share={toNumber(h.weight) ?? 0} className="w-20" />
                             <span className="num text-ink-muted">{percent(h.weight)}</span>
@@ -381,9 +386,9 @@ export default function PortfolioDetailPage() {
                 <tr>
                   <th className={th}>As of</th>
                   <th className={cn(th, 'text-right')}>Total</th>
-                  <th className={cn(th, 'text-right')}>Holdings</th>
-                  <th className={th}>Recorded</th>
-                  <th className={th}>Note</th>
+                  <th className={cn(th, 'text-right', showFrom.sm)}>Holdings</th>
+                  <th className={cn(th, showFrom.lg)}>Recorded</th>
+                  <th className={cn(th, showFrom.md)}>Note</th>
                   <th className={th}>
                     <span className="sr-only">Actions</span>
                   </th>
@@ -396,14 +401,23 @@ export default function PortfolioDetailPage() {
                       <button type="button" onClick={() => setSelected(s.id)} className="hover:underline">
                         {formatDate(s.as_of)}
                       </button>
+                      {isBackdated(s) && (
+                        <span className={onlyBelow.lg}>
+                          <Chip className="ml-2">backdated</Chip>
+                        </span>
+                      )}
+                      {s.note && <div className={cn('text-[10px] text-ink-muted mt-0.5 whitespace-normal', onlyBelow.md)}>{s.note}</div>}
                     </td>
-                    <td className={cn(td, 'text-right num font-medium')}>{money(s.total, cur)}</td>
-                    <td className={cn(td, 'text-right num')}>{s.holdings_count}</td>
-                    <td className={cn(td, 'text-ink-muted')}>
+                    <td className={cn(td, 'text-right num')}>
+                      <div className="font-medium">{money(s.total, cur)}</div>
+                      <div className={cn('text-[10px] text-ink-muted mt-0.5', onlyBelow.sm)}>{s.holdings_count} holdings</div>
+                    </td>
+                    <td className={cn(td, 'text-right num', showFrom.sm)}>{s.holdings_count}</td>
+                    <td className={cn(td, 'text-ink-muted', showFrom.lg)}>
                       {formatDateTime(s.recorded_at)}
                       {isBackdated(s) && <Chip className="ml-2">backdated</Chip>}
                     </td>
-                    <td className={cn(td, 'text-ink-muted whitespace-normal min-w-[8rem]')}>{s.note ?? ''}</td>
+                    <td className={cn(td, 'text-ink-muted whitespace-normal min-w-[8rem]', showFrom.md)}>{s.note ?? ''}</td>
                     <td className={cn(td, 'text-right py-0')}>
                       <button
                         type="button"

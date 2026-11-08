@@ -161,6 +161,9 @@ class CurrencyConsolidation(BaseModel):
     previous_total: Decimal | None
     by_portfolio: list[AllocationSlice]
     by_asset_class: list[AllocationSlice]
+    # Cost side (quantity × buy price), over the holdings that have a buy price everywhere.
+    cost_by_portfolio: list[AllocationSlice]
+    cost_by_asset_class: list[AllocationSlice]
     holdings: list[ConsolidatedHolding]
     months: list[str]  # "YYYY-MM", last 12 months; the current month is as of today
     history: list[PortfolioSeries]  # month-end value per portfolio, sorted by name

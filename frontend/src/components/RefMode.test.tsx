@@ -17,6 +17,20 @@ describe('RefMode', () => {
     ])
   })
 
+  it('outlines every stamped element while on, without hovering', async () => {
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter>
+        <RefMode />
+      </MemoryRouter>,
+    )
+    expect(screen.queryByTestId('ref-outline-all')).toBeNull()
+    await user.click(screen.getByRole('button', { name: /Ref/ }))
+    expect(screen.getByTestId('ref-outline-all').textContent).toContain('[data-ref]')
+    await user.click(screen.getByRole('button', { name: 'Exit Ref mode' }))
+    expect(screen.queryByTestId('ref-outline-all')).toBeNull()
+  })
+
   it('captures a note on a clicked element instead of operating it', async () => {
     const user = userEvent.setup()
     const onAppClick = vi.fn()

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { X } from 'lucide-react'
 import { apiErrorMessage } from '../api/client'
 import { HoldingsCsvModal } from '../components/HoldingsCsvModal'
@@ -10,7 +10,7 @@ import { Button } from '../components/ui/Button'
 import { BankLogo } from '../components/BankLogo'
 import { FormError, TextArea } from '../components/ui/Field'
 import { DateField } from '../components/ui/DateField'
-import { Chip, ErrorBox, Loading, Page, PageHeader, Table, td, th } from '../components/ui/Primitives'
+import { Chip, ErrorBox, Loading, Page, PageHeader, Table, onlyBelow, showFrom, stacked, td, th } from '../components/ui/Primitives'
 import { usePortfolio, usePortfolioMutations, useSnapshotPrefill } from '../hooks/queries'
 import { trimDecimal } from '../lib/amount'
 import { blankRow, newRowKey, num, rowsToHoldings, type HoldingRow } from '../lib/holdingRows'
@@ -18,6 +18,9 @@ import { cn } from '../lib/cn'
 import type { CsvHolding } from '../lib/holdingsCsv'
 import { ASSET_CLASS_LABELS, arrow, deltaClass, formatDate, money, quantity, signedMoney, todayISO, toNumber } from '../lib/format'
 import type { AssetClass, Holding } from '../types/api'
+
+// Every field is editable, so on narrow screens each row becomes a card instead of dropping columns.
+const stack = stacked('lg')
 
 type Row = HoldingRow
 
@@ -148,11 +151,6 @@ export default function SnapshotPage() {
   return (
     <Page>
       <PageHeader
-        back={
-          <Link to={`/portfolios/${p.id}`} className="font-mono text-xs uppercase tracking-widest text-ink-muted hover:text-ink hover:underline">
-            ← {p.name}
-          </Link>
-        }
         title={
           <span className="flex items-center gap-3">
             <BankLogo institution={p.provider} size="lg" />
@@ -182,8 +180,8 @@ export default function SnapshotPage() {
         </div>
       </div>
 
-      <Table>
-        <thead>
+      <Table stack="lg">
+        <thead className={stack.thead}>
           <tr>
             <th className={th}>Symbol</th>
             <th className={th}>Name</th>
@@ -192,16 +190,16 @@ export default function SnapshotPage() {
             <th className={cn(th, 'text-right')}>Buy price · {cur}</th>
             <th className={cn(th, 'text-right')}>Current price · {cur}</th>
             <th className={cn(th, 'text-right')}>Value</th>
-            <th className={cn(th, 'text-right')}>Δ vs base</th>
+            <th className={cn(th, 'text-right', showFrom.xl)}>Δ vs base</th>
             <th className={th}>
               <span className="sr-only">Status and actions</span>
             </th>
           </tr>
         </thead>
-        <tbody>
+        <tbody className={stack.tbody}>
           {computed.map(({ row: r, value, delta, status }) => (
-            <tr key={r.key}>
-              <td className={cn(td, 'min-w-[6rem]')}>
+            <tr key={r.key} className={stack.tr}>
+              <td data-label="Symbol" className={cn(td, 'min-w-[5.5rem]', stack.td)}>
                 <input
                   aria-label="Symbol"
                   className={cn(cellInput, 'uppercase font-medium')}
@@ -210,10 +208,10 @@ export default function SnapshotPage() {
                   placeholder="AAPL"
                 />
               </td>
-              <td className={cn(td, 'min-w-[10rem]')}>
+              <td data-label="Name" className={cn(td, 'min-w-[7rem]', stack.td, stack.wide)}>
                 <input aria-label="Name" className={cellInput} value={r.name} onChange={(e) => edit(r.key, { name: e.target.value })} placeholder="Apple Inc." />
               </td>
-              <td className={cn(td, 'min-w-[7rem]')}>
+              <td data-label="Class" className={cn(td, 'min-w-[7rem]', stack.td)}>
                 <select
                   aria-label="Asset class"
                   className={cn(cellInput, 'cursor-pointer [&>option]:bg-paper')}
@@ -227,10 +225,10 @@ export default function SnapshotPage() {
                   ))}
                 </select>
               </td>
-              <td className={cn(td, 'min-w-[6rem]')}>
+              <td data-label="Quantity" className={cn(td, 'min-w-[5.5rem]', stack.td)}>
                 <AmountInput aria-label="Quantity" maxDecimals={8} className={cn(cellInput, 'text-right num')} value={r.quantity} onValueChange={(v) => edit(r.key, { quantity: v })} placeholder="0" />
               </td>
-              <td className={cn(td, 'min-w-[6rem]')}>
+              <td data-label="Buy price" className={cn(td, 'min-w-[5.5rem]', stack.td)}>
                 <AmountInput
                   aria-label="Buy price"
                   currency={cur}
@@ -241,7 +239,7 @@ export default function SnapshotPage() {
                   placeholder="optional"
                 />
               </td>
-              <td className={cn(td, 'min-w-[6rem]')}>
+              <td data-label="Current price" className={cn(td, 'min-w-[5.5rem]', stack.td)}>
                 <AmountInput
                   aria-label="Current price"
                   currency={cur}
@@ -252,9 +250,13 @@ export default function SnapshotPage() {
                   placeholder="0.00"
                 />
               </td>
-              <td className={cn(td, 'text-right num font-medium')}>{value === null ? '—' : money(value, cur)}</td>
-              <td className={cn(td, 'text-right num', deltaClass(delta))}>{delta === null || !base?.based_on ? '—' : signedMoney(delta, cur)}</td>
-              <td className={cn(td, 'text-right py-0')}>
+              <td data-label="Value" className={cn(td, 'text-right num font-medium', stack.td)}>
+                {value === null ? '—' : money(value, cur)}
+                {delta !== null && base?.based_on && <div className={cn('text-[10px] font-normal mt-0.5', deltaClass(delta), onlyBelow.xl)}>{signedMoney(delta, cur)}</div>}
+              </td>
+              {/* Δ sits under Value until the table is wide enough for its own column. */}
+              <td data-label="Δ vs base" className={cn(td, 'text-right num', deltaClass(delta), stack.td, 'hidden t-lg:hidden t-xl:table-cell')}>{delta === null || !base?.based_on ? '—' : signedMoney(delta, cur)}</td>
+              <td className={cn(td, 'text-right py-0', stack.td)}>
                 <div className="flex items-center justify-end gap-2">
                   {status === 'new' && (
                     <Chip active className="uppercase">
@@ -278,18 +280,21 @@ export default function SnapshotPage() {
             </tr>
           ))}
           {sold.map((h) => (
-            <tr key={`sold-${h.symbol}`} className="text-ink-muted">
-              <td className={td}>
+            <tr key={`sold-${h.symbol}`} className={cn('text-ink-muted', stack.tr)}>
+              <td data-label="Symbol" className={cn(td, stack.td)}>
                 <span className="line-through">{h.symbol}</span>
               </td>
-              <td className={cn(td, 'text-ink-muted')}>{h.name ?? '—'}</td>
-              <td className={cn(td, 'text-[10px] uppercase tracking-widest text-ink-muted')}>{ASSET_CLASS_LABELS[h.asset_class] ?? h.asset_class}</td>
-              <td className={cn(td, 'text-right num text-ink-muted')}>{quantity(h.quantity)}</td>
-              <td className={cn(td, 'text-right num text-ink-muted')}>{h.buy_price === null ? '—' : money(h.buy_price, cur)}</td>
-              <td className={cn(td, 'text-right num text-ink-muted')}>{money(h.current_price, cur)}</td>
-              <td className={cn(td, 'text-right num text-ink-muted')}>{money(0, cur)}</td>
-              <td className={cn(td, 'text-right num text-error')}>{signedMoney(-(toNumber(h.value) ?? 0), cur)}</td>
-              <td className={cn(td, 'text-right')}>
+              <td data-label="Name" className={cn(td, 'text-ink-muted', stack.td, stack.wide)}>{h.name ?? '—'}</td>
+              <td data-label="Class" className={cn(td, 'text-[10px] uppercase tracking-widest text-ink-muted', stack.td)}>{ASSET_CLASS_LABELS[h.asset_class] ?? h.asset_class}</td>
+              <td data-label="Quantity" className={cn(td, 'text-right num text-ink-muted', stack.td)}>{quantity(h.quantity)}</td>
+              <td data-label="Buy price" className={cn(td, 'text-right num text-ink-muted', stack.td)}>{h.buy_price === null ? '—' : money(h.buy_price, cur)}</td>
+              <td data-label="Current price" className={cn(td, 'text-right num text-ink-muted', stack.td)}>{money(h.current_price, cur)}</td>
+              <td data-label="Value" className={cn(td, 'text-right num text-ink-muted', stack.td)}>
+                {money(0, cur)}
+                <div className={cn('text-[10px] mt-0.5 text-error', onlyBelow.xl)}>{signedMoney(-(toNumber(h.value) ?? 0), cur)}</div>
+              </td>
+              <td data-label="Δ vs base" className={cn(td, 'text-right num text-error', stack.td, 'hidden t-lg:hidden t-xl:table-cell')}>{signedMoney(-(toNumber(h.value) ?? 0), cur)}</td>
+              <td className={cn(td, 'text-right', stack.td)}>
                 <div className="flex items-center justify-end gap-3">
                   <Chip className="uppercase">sold</Chip>
                   <button type="button" onClick={() => undoSold(h)} className="font-mono text-[10px] uppercase tracking-widest text-ink-muted hover:text-ink hover:underline">

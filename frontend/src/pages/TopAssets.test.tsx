@@ -5,7 +5,8 @@ import { TopAssetsSection } from './AnalyticsPage'
 const holding = (symbol: string, value: number, held_in = ['Schwab']): TopAsset => ({ kind: 'holding', name: symbol, symbol, group: 'etf', held_in, value: String(value) })
 const account = (name: string, value: number): TopAsset => ({ kind: 'account', name, symbol: null, group: 'savings', held_in: [], value: String(value) })
 
-const assets = [account('Chase', 5000), holding('VTI', 4000, ['Fidelity', 'Schwab']), ...Array.from({ length: 10 }, (_, i) => holding(`S${i}`, 100 - i))]
+const msft: TopAsset = { kind: 'holding', name: 'Microsoft', symbol: 'MSFT', group: 'stock', held_in: ['Morgan Stanley'], value: '3000' }
+const assets = [account('Chase', 5000), holding('VTI', 4000, ['Fidelity', 'Schwab']), msft, ...Array.from({ length: 10 }, (_, i) => holding(`S${i}`, 100 - i))]
 const overview = { top_assets: [{ currency: 'USD', assets }] } as unknown as Overview
 
 const rows = () => within(screen.getByRole('list', { name: 'Top assets in USD' })).getAllByRole('listitem')
@@ -16,8 +17,11 @@ describe('TopAssetsSection', () => {
     expect(rows()).toHaveLength(10)
     expect(rows()[0]).toHaveTextContent('Chase')
     expect(rows()[1]).toHaveTextContent('VTI')
-    expect(rows()[1]).toHaveTextContent('ETF · Fidelity, Schwab')
-    expect(screen.getByText(/top 10 of 12/)).toBeInTheDocument()
+    expect(rows()[1]).not.toHaveTextContent('Schwab') // where it's held isn't shown
+    expect(rows()[2]).toHaveTextContent('Microsoft')
+    expect(rows()[2]).not.toHaveTextContent('MSFT · Stock') // just the name; ticker and class are in the hover title
+    expect(rows()[2]).toHaveAttribute('title', expect.stringContaining('MSFT · Stock'))
+    expect(screen.getByText(/top 10 of 13/)).toBeInTheDocument()
   })
 
   it('follows the scope toggle', () => {

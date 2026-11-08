@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ExternalLink, Plus, Trash2 } from 'lucide-react'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { apiErrorMessage } from '../api/client'
@@ -13,7 +13,7 @@ import { AmountField } from '../components/ui/AmountInput'
 import { FormError, TextArea } from '../components/ui/Field'
 import { DateField } from '../components/ui/DateField'
 import { ConfirmDialog } from '../components/ui/Modal'
-import { Chip, Empty, ErrorBox, Loading, Page, PageHeader, StatCard, Table, td, th } from '../components/ui/Primitives'
+import { Chip, Empty, ErrorBox, Loading, Page, PageHeader, StatCard, Table, onlyBelow, showFrom, td, th } from '../components/ui/Primitives'
 import { useAccount, useAccountMutations, useBalances, usePortfolios } from '../hooks/queries'
 import { parseAmount } from '../lib/amount'
 import { cn } from '../lib/cn'
@@ -53,18 +53,12 @@ function isBackdated(e: BalanceEntry): boolean {
 export default function AccountDetailPage() {
   const { accountId = '' } = useParams()
   const navigate = useNavigate()
-  const { hash } = useLocation()
   const { data: account, isLoading, error } = useAccount(accountId)
   const { data: history } = useBalances(accountId)
   const { remove } = useAccountMutations()
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [addPortfolio, setAddPortfolio] = useState(false)
-
-  // "+" in the accounts table links here with #record.
-  useEffect(() => {
-    if (hash === '#record' && account) document.getElementById('record')?.scrollIntoView({ behavior: 'smooth' })
-  }, [hash, account])
 
   if (isLoading) return <Page><Loading label="Loading account" /></Page>
   if (error || !account) {
@@ -92,11 +86,6 @@ export default function AccountDetailPage() {
   return (
     <Page>
       <PageHeader
-        back={
-          <Link to="/accounts" className="font-mono text-[11px] uppercase tracking-widest text-ink-muted hover:text-ink">
-            ← Accounts
-          </Link>
-        }
         title={
           <span className="flex items-center gap-3">
             <BankLogo institution={account.institution} size="xl" />
@@ -223,9 +212,9 @@ function HistoryTable({ account, entries }: { account: AccountDetail; entries: B
           <tr>
             <th className={th}>As of</th>
             <th className={cn(th, 'text-right')}>Balance</th>
-            <th className={cn(th, 'text-right')}>Change</th>
-            <th className={th}>Note</th>
-            <th className={th}>Recorded</th>
+            <th className={cn(th, 'text-right', showFrom.sm)}>Change</th>
+            <th className={cn(th, showFrom.md)}>Note</th>
+            <th className={cn(th, showFrom.lg)}>Recorded</th>
             <th className={th}>
               <span className="sr-only">Actions</span>
             </th>
@@ -234,20 +223,31 @@ function HistoryTable({ account, entries }: { account: AccountDetail; entries: B
         <tbody>
           {entries.map((e) => (
             <tr key={e.id} className={cn(!e.effective && '[&_td]:text-ink-muted')}>
-              <td className={td}>
-                <span className="flex items-center gap-2">
+              <td className={cn(td, 'whitespace-normal')}>
+                <span className="flex flex-wrap items-center gap-2">
                   {formatDate(e.as_of)}
                   {!e.effective && <Chip>superseded</Chip>}
+                  {isBackdated(e) && (
+                    <span className={onlyBelow.lg}>
+                      <Chip>backdated</Chip>
+                    </span>
+                  )}
                 </span>
+                {e.note && <div className={cn('text-[10px] text-ink-muted mt-0.5', onlyBelow.md)}>{e.note}</div>}
               </td>
-              <td className={cn(td, 'text-right num font-medium')}>{money(e.amount, account.currency)}</td>
               <td className={cn(td, 'text-right num')}>
+                <div className="font-medium">{money(e.amount, account.currency)}</div>
+                <div className={cn('text-[10px] mt-0.5', e.effective && deltaClass(e.change), onlyBelow.sm)}>
+                  {arrow(e.change)} {signedMoney(e.change, account.currency)}
+                </div>
+              </td>
+              <td className={cn(td, 'text-right num', showFrom.sm)}>
                 <span className={e.effective ? deltaClass(e.change) : undefined}>
                   {arrow(e.change)} {signedMoney(e.change, account.currency)}
                 </span>
               </td>
-              <td className={cn(td, 'whitespace-normal min-w-[8rem] text-ink-muted')}>{e.note || '—'}</td>
-              <td className={cn(td, 'text-ink-muted')}>
+              <td className={cn(td, 'whitespace-normal min-w-[8rem] text-ink-muted', showFrom.md)}>{e.note || '—'}</td>
+              <td className={cn(td, 'text-ink-muted', showFrom.lg)}>
                 <span className="flex items-center gap-2">
                   {formatDateTime(e.recorded_at)}
                   {isBackdated(e) && <Chip>backdated</Chip>}
@@ -461,22 +461,23 @@ function AccountPortfolios({ account, onAdd }: { account: AccountDetail; onAdd: 
               <th className={th}>Portfolio</th>
               <th className={cn(th, 'text-right')}>Value</th>
               <th className={cn(th, 'text-right')}>Change</th>
-              <th className={cn(th, 'text-right')}>As of</th>
+              <th className={cn(th, 'text-right', showFrom.sm)}>As of</th>
             </tr>
           </thead>
           <tbody>
             {linked.map((p) => (
               <tr key={p.id} className="hover:bg-paper-warm">
-                <td className={td}>
+                <td className={cn(td, 'whitespace-normal')}>
                   <Link to={`/portfolios/${p.id}`} className="inline-flex items-center gap-2 hover:underline">
                     <BankLogo institution={p.provider} size="xs" />
                     {p.name}
                     {p.status === 'closed' && <Chip>closed</Chip>}
                   </Link>
+                  <div className={cn('text-[10px] text-ink-muted mt-0.5', onlyBelow.sm)}>{p.value_as_of ? formatDate(p.value_as_of) : 'no snapshot'}</div>
                 </td>
                 <td className={cn(td, 'text-right')}>{money(p.value, p.currency)}</td>
                 <td className={cn(td, 'text-right', deltaClass(p.delta))}>{p.delta !== null ? signedMoney(p.delta, p.currency) : '—'}</td>
-                <td className={cn(td, 'text-right text-ink-muted')}>{p.value_as_of ? formatDate(p.value_as_of) : 'no snapshot'}</td>
+                <td className={cn(td, 'text-right text-ink-muted', showFrom.sm)}>{p.value_as_of ? formatDate(p.value_as_of) : 'no snapshot'}</td>
               </tr>
             ))}
           </tbody>

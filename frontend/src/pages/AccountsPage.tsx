@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Briefcase, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { apiErrorMessage } from '../api/client'
 import { AccountFormModal } from '../components/AccountFormModal'
 import { BankLogo } from '../components/BankLogo'
@@ -8,7 +8,7 @@ import { PortfolioFormModal, afterPortfolioSaved } from '../components/Portfolio
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
 import { Input, Select } from '../components/ui/Field'
-import { Chip, Empty, ErrorBox, Loading, Page, PageHeader, Segmented, StatCard, Table, td, th } from '../components/ui/Primitives'
+import { Chip, Empty, ErrorBox, Loading, Page, PageHeader, Segmented, StatCard, Table, onlyBelow, rowLink, showFrom, td, th } from '../components/ui/Primitives'
 import { useWorkspace } from '../context/WorkspaceContext'
 import { useAccounts, useTags } from '../hooks/queries'
 import { cn } from '../lib/cn'
@@ -138,13 +138,11 @@ export default function AccountsPage() {
               </Select>
               <Select id="acc-type" aria-label="Filter by type" className="w-36" value={type} onChange={(e) => setType(e.target.value)}>
                 <option value="">All types</option>
-                {Object.entries(ACCOUNT_TYPE_LABELS)
-                  .filter(([k]) => k !== 'portfolio')
-                  .map(([k, label]) => (
-                    <option key={k} value={k}>
-                      {label}
-                    </option>
-                  ))}
+                {Object.entries(ACCOUNT_TYPE_LABELS).map(([k, label]) => (
+                  <option key={k} value={k}>
+                    {label}
+                  </option>
+                ))}
               </Select>
               <Select id="acc-cur" aria-label="Filter by currency" className="w-28" value={currency} onChange={(e) => setCurrency(e.target.value)}>
                 <option value="">All ccy</option>
@@ -174,70 +172,53 @@ export default function AccountsPage() {
               <thead>
                 <tr>
                   <th className={th}>Account</th>
-                  <th className={th}>Type</th>
-                  <th className={th}>Location</th>
-                  <th className={th}>Tags</th>
+                  <th className={cn(th, showFrom.md)}>Type</th>
+                  <th className={cn(th, showFrom.lg)}>Location</th>
+                  <th className={cn(th, showFrom.md)}>Tags</th>
                   <th className={cn(th, 'text-right')}>Balance</th>
-                  <th className={cn(th, 'text-right')}>Δ last entry</th>
-                  <th className={th}>Updated</th>
-                  <th className={th}>
-                    <span className="sr-only">Actions</span>
-                  </th>
+                  <th className={cn(th, 'text-right', showFrom.sm)}>Δ last entry</th>
+                  <th className={cn(th, showFrom.lg)}>Updated</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((a) => {
                   const closed = a.status === 'closed'
+                  const row = rowLink(() => navigate(`/accounts/${a.id}`))
                   return (
-                    <tr key={a.id} className={cn(closed && '[&_td]:text-ink-muted')}>
-                      <td className={td}>
+                    <tr key={a.id} onClick={row.onClick} className={cn(row.className, closed && '[&_td]:text-ink-muted')}>
+                      <td className={cn(td, 'whitespace-normal')}>
                         <div className="flex items-center gap-3">
                           <BankLogo institution={a.institution} size="md" />
                           <div className="min-w-0">
                             <Link to={`/accounts/${a.id}`} className="text-[13px] font-medium text-ink hover:underline">
                               {a.name}
                             </Link>
-                            <div className="text-[10px] text-ink-muted mt-0.5">{[a.institution, a.account_number_masked].filter(Boolean).join(' · ') || '—'}</div>
+                            <div className="text-[10px] text-ink-muted mt-0.5">
+                              {[a.institution, a.account_number_masked].filter(Boolean).join(' · ') || '—'}
+                              <span className={onlyBelow.md}> · {ACCOUNT_TYPE_LABELS[a.account_type]}</span>
+                            </div>
                           </div>
                         </div>
                       </td>
-                      <td className={cn(td, 'text-[10px] uppercase tracking-widest text-ink-muted')}>{ACCOUNT_TYPE_LABELS[a.account_type]}</td>
-                      <td className={cn(td, 'text-ink-muted')}>{location(a)}</td>
-                      <td className={td}>
+                      <td className={cn(td, 'text-[10px] uppercase tracking-widest text-ink-muted', showFrom.md)}>{ACCOUNT_TYPE_LABELS[a.account_type]}</td>
+                      <td className={cn(td, 'text-ink-muted', showFrom.lg)}>{location(a)}</td>
+                      <td className={cn(td, showFrom.md)}>
                         <div className="flex flex-wrap gap-1.5">
                           {a.tags.map((t) => (
                             <Chip key={t.id}>{t.name}</Chip>
                           ))}
                         </div>
                       </td>
-                      <td className={cn(td, 'text-right num text-[13px] font-medium')}>{money(a.balance, a.currency)}</td>
                       <td className={cn(td, 'text-right num')}>
+                        <div className="text-[13px] font-medium">{money(a.balance, a.currency)}</div>
+                        <div className={cn('text-[10px] mt-0.5', onlyBelow.sm)}>
+                          {closed ? <span className="text-ink-muted">closed</span> : <span className={deltaClass(a.delta)}>{signedMoney(a.delta, a.currency)}</span>}
+                        </div>
+                      </td>
+                      <td className={cn(td, 'text-right num', showFrom.sm)}>
                         {closed ? <span className="text-ink-muted">closed</span> : <span className={deltaClass(a.delta)}>{signedMoney(a.delta, a.currency)}</span>}
                       </td>
-                      <td className={cn(td, 'text-ink-muted')}>{closed ? `Closed ${formatDate(a.closed_on)}` : formatDate(a.balance_as_of)}</td>
-                      <td className={cn(td, 'text-right px-2')}>
-                        {!closed && PORTFOLIO_ACCOUNT_TYPES.has(a.account_type) && (
-                          <button
-                            type="button"
-                            onClick={() => setPortfolioFor(a)}
-                            aria-label={`Add portfolio for ${a.name}`}
-                            title="Add portfolio"
-                            className="inline-flex items-center justify-center w-9 h-9 text-ink-muted hover:text-ink"
-                          >
-                            <Briefcase className="w-4 h-4" aria-hidden="true" />
-                          </button>
-                        )}
-                        {!closed && (
-                          <Link
-                            to={`/accounts/${a.id}#record`}
-                            aria-label={`Record balance for ${a.name}`}
-                            title="Record balance"
-                            className="inline-flex items-center justify-center w-9 h-9 text-ink-muted hover:text-ink"
-                          >
-                            <Plus className="w-4 h-4" aria-hidden="true" />
-                          </Link>
-                        )}
-                      </td>
+                      <td className={cn(td, 'text-ink-muted', showFrom.lg)}>{closed ? `Closed ${formatDate(a.closed_on)}` : formatDate(a.balance_as_of)}</td>
                     </tr>
                   )
                 })}

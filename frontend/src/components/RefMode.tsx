@@ -20,6 +20,13 @@ export interface RefNote {
 const STORAGE_KEY = 'nurav-ref-notes'
 const UI = '[data-ref-ui]'
 
+// While Ref is on, every stamped element shows a faint outline, so the parts are
+// visible at a glance without hovering. The hovered / picked one gets the solid box.
+const OUTLINE_ALL = `[data-ref]:not(${UI}, ${UI} *) {
+  outline: 1px dashed rgb(var(--series-1) / 0.45) !important;
+  outline-offset: -1px !important;
+}`
+
 function loadNotes(): RefNote[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -207,6 +214,7 @@ export function RefMode() {
       {on &&
         createPortal(
           <div data-ref-ui style={{ pointerEvents: 'auto' }}>
+            <style data-testid="ref-outline-all">{OUTLINE_ALL}</style>
             {rect && target && (
               <div
                 aria-hidden="true"
@@ -291,7 +299,7 @@ export function RefMode() {
               <div className="flex-1 overflow-y-auto px-3 py-2 flex flex-col gap-2">
                 {notes.length === 0 ? (
                   <p className="font-mono text-[11px] text-ink-muted leading-relaxed">
-                    Hover to see what each part is, click it to add a note. Esc exits. Clicks don't operate the app while Ref is on.
+                    Every part is outlined; hover to see its name, click it to add a note. Esc exits. Clicks don't operate the app while Ref is on.
                   </p>
                 ) : (
                   notes.map((n, i) => (

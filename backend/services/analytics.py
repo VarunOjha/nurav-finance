@@ -24,6 +24,19 @@ from services.ledger import Point, Timeline, add_months, month_end, month_key, m
 RANGES = {"6m": 6, "1y": 12, "3y": 36}
 UNTAGGED = "untagged"
 
+# "What it's in" for an account balance. Deposits are cash; an investment or
+# retirement account's balance is invested in something we don't know, so it gets
+# its own slice rather than pretending to be cash.
+ACCOUNT_ASSET_CLASS = {
+    "checking": "cash",
+    "savings": "cash",
+    "fixed_deposit": "cash",
+    "brokerage": "cash",  # uninvested cash at a broker; holdings come from its portfolio
+    "investment": "unclassified",
+    "retirement": "unclassified",
+    "other": "other",
+}
+
 
 @dataclass
 class Item:
@@ -34,7 +47,7 @@ class Item:
     timeline: Timeline[Decimal]
     closed_on: date | None
     opened_on: date | None
-    group: str  # account type, or "portfolio"
+    group: str  # account type; a portfolio takes its brokerage account's type
     latest_snapshot: Snapshot | None = None
     id: uuid.UUID | None = None
     account_id: uuid.UUID | None = None  # portfolios: the linked brokerage account
@@ -105,8 +118,13 @@ def load_items(db: Session, workspace: Workspace) -> list[Item]:
         )
     accounts_by_id = {i.id: i for i in items if i.kind == "account"}
     for i in items:
-        if i.kind == "portfolio" and i.account_id in accounts_by_id:
-            accounts_by_id[i.account_id].linked_until.append(i.closed_on)
+        if i.kind != "portfolio":
+            continue
+        # "Where it's held": a portfolio is the money in its brokerage account.
+        owner = accounts_by_id.get(i.account_id)
+        i.group = owner.group if owner else "brokerage"
+        if owner:
+            owner.linked_until.append(i.closed_on)
     return items
 
 
@@ -189,7 +207,7 @@ def overview(db: Session, workspace: Workspace, range_key: str, today: date | No
         for tag in i.tags or [UNTAGGED]:
             by_tag[i.currency].append((tag, value))
         if i.kind == "account":
-            by_class[i.currency].append(("cash", value))
+            by_class[i.currency].append((ACCOUNT_ASSET_CLASS.get(i.group, "other"), value))
         elif i.latest_snapshot is not None:
             for h in i.latest_snapshot.holdings:
                 by_class[i.currency].append((h.asset_class, holding_value(h)))

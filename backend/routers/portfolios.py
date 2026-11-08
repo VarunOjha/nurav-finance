@@ -177,6 +177,7 @@ def consolidated(workspace: Workspace = Depends(get_current_workspace), db: Sess
                     "value": ZERO,
                     "cost": ZERO,
                     "cost_known": True,
+                    "lots": [],  # (portfolio, cost) — for the cost-side breakdowns
                     "portfolios": [],
                 },
             )
@@ -187,6 +188,7 @@ def consolidated(workspace: Workspace = Depends(get_current_workspace), db: Sess
                 merged["cost_known"] = False
             else:
                 merged["cost"] += cost
+                merged["lots"].append((p.name, cost))
             if p.name not in merged["portfolios"]:
                 merged["portfolios"].append(p.name)
 
@@ -194,6 +196,13 @@ def consolidated(workspace: Workspace = Depends(get_current_workspace), db: Sess
     for currency, b in sorted(per_currency.items(), key=lambda kv: kv[1]["total"], reverse=True):
         holdings = sorted(b["holdings"].values(), key=lambda h: h["value"], reverse=True)
         total_cost = sum((h["cost"] for h in holdings if h["cost_known"]), ZERO)
+        # What was put in, split like the value side. Same holdings as cost_share:
+        # a symbol missing a buy price in any portfolio is left out entirely.
+        costed = [h for h in holdings if h["cost_known"]]
+        cost_by_portfolio = allocation([lot for h in costed for lot in h["lots"]])
+        cost_by_class = allocation([(h["asset_class"], h["cost"]) for h in costed])
+        for h in holdings:
+            del h["lots"]
         for h in holdings:
             h["share"] = share(h["value"], b["total"])
             h["current_price"] = (h["value"] / h["quantity"]).quantize(Decimal("0.000001")) if h["quantity"] else ZERO
@@ -211,6 +220,8 @@ def consolidated(workspace: Workspace = Depends(get_current_workspace), db: Sess
                 "previous_total": b["previous"] if b["has_prev"] else None,
                 "by_portfolio": allocation(b["by_portfolio"]),
                 "by_asset_class": allocation(b["by_class"]),
+                "cost_by_portfolio": cost_by_portfolio,
+                "cost_by_asset_class": cost_by_class,
                 "holdings": holdings,
                 "months": [month_key(m) for m in months],
                 "history": b["history"],  # portfolios were visited in name order

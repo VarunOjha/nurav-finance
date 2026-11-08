@@ -18,7 +18,7 @@ import { DateField } from './ui/DateField'
 import { Modal } from './ui/Modal'
 
 const QUICK_IDENTIFIERS = ['IFSC', 'Routing no.', 'SWIFT', 'IBAN', 'Bank code', 'Branch', 'MICR']
-const ACCOUNT_TYPES = Object.keys(ACCOUNT_TYPE_LABELS).filter((k) => k !== 'portfolio') as AccountType[]
+const ACCOUNT_TYPES = Object.keys(ACCOUNT_TYPE_LABELS) as AccountType[]
 const DECIMAL = /^-?\d+(\.\d{1,4})?$/
 
 interface Row {

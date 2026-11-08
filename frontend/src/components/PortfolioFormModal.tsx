@@ -11,13 +11,16 @@ import { handOffScreenshots } from '../lib/pendingScreenshots'
 import { MAX_SCREENSHOTS, screenshotProblem } from '../lib/screenshotImport'
 import type { AccountSummary, AssetClass, PortfolioInput, PortfolioSummary } from '../types/api'
 import { AmountInput } from './ui/AmountInput'
-import { Table, td, th } from './ui/Primitives'
+import { Table, stacked, td, th } from './ui/Primitives'
 import { BankPicker } from './BankPicker'
 import { TagPicker } from './TagPicker'
 import { Button } from './ui/Button'
 import { FormError, Input, Label, Select, TextArea } from './ui/Field'
 import { DateField } from './ui/DateField'
 import { Modal } from './ui/Modal'
+
+// Every field is editable, so on narrow screens each row becomes a card instead of dropping columns.
+const stack = stacked('lg')
 
 interface Props {
   open: boolean
@@ -483,8 +486,8 @@ function HoldingsEntry({
         </div>
         <DateField id="pf-asof" label="As of" max={todayISO()} value={asOf} onChange={(e) => onAsOf(e.target.value)} className="w-44" />
       </div>
-      <Table>
-        <thead>
+      <Table stack="lg">
+        <thead className={stack.thead}>
           <tr>
             <th className={cn(th, 'px-2')}>Symbol</th>
             <th className={cn(th, 'px-2')}>Name</th>
@@ -498,12 +501,12 @@ function HoldingsEntry({
             </th>
           </tr>
         </thead>
-        <tbody>
+        <tbody className={stack.tbody}>
           {rows.map((r, i) => {
             const value = rowValue(r)
             return (
-              <tr key={r.key}>
-                <td className={cn(cell, 'min-w-[5.5rem]')}>
+              <tr key={r.key} className={stack.tr}>
+                <td data-label="Symbol" className={cn(cell, 'min-w-[5.5rem]', stack.td)}>
                   <input
                     aria-label={`Symbol, row ${i + 1}`}
                     className={cn(cellInput, 'uppercase font-medium')}
@@ -512,10 +515,10 @@ function HoldingsEntry({
                     placeholder="AAPL"
                   />
                 </td>
-                <td className={cn(cell, 'min-w-[8rem]')}>
+                <td data-label="Name" className={cn(cell, 'min-w-[8rem]', stack.td, stack.wide)}>
                   <input aria-label={`Name, row ${i + 1}`} className={cellInput} value={r.name} onChange={(e) => edit(r.key, { name: e.target.value })} placeholder="optional" />
                 </td>
-                <td className={cn(cell, 'min-w-[6.5rem]')}>
+                <td data-label="Class" className={cn(cell, 'min-w-[6.5rem]', stack.td)}>
                   <select
                     aria-label={`Asset class, row ${i + 1}`}
                     className={cn(cellInput, 'cursor-pointer [&>option]:bg-paper')}
@@ -529,7 +532,7 @@ function HoldingsEntry({
                     ))}
                   </select>
                 </td>
-                <td className={cn(cell, 'min-w-[5.5rem]')}>
+                <td data-label="Quantity" className={cn(cell, 'min-w-[5.5rem]', stack.td)}>
                   <AmountInput
                     aria-label={`Quantity, row ${i + 1}`}
                     maxDecimals={8}
@@ -539,7 +542,7 @@ function HoldingsEntry({
                     placeholder="0"
                   />
                 </td>
-                <td className={cn(cell, 'min-w-[6rem]')}>
+                <td data-label="Buy price" className={cn(cell, 'min-w-[6rem]', stack.td)}>
                   <AmountInput
                     aria-label={`Buy price, row ${i + 1}`}
                     currency={currency}
@@ -550,7 +553,7 @@ function HoldingsEntry({
                     placeholder="optional"
                   />
                 </td>
-                <td className={cn(cell, 'min-w-[6rem]')}>
+                <td data-label="Current price" className={cn(cell, 'min-w-[6rem]', stack.td)}>
                   <AmountInput
                     aria-label={`Current price, row ${i + 1}`}
                     currency={currency}
@@ -561,8 +564,8 @@ function HoldingsEntry({
                     placeholder="0.00"
                   />
                 </td>
-                <td className={cn(cell, 'text-right num')}>{value === null ? '—' : money(value, currency)}</td>
-                <td className={cn(cell, 'text-right')}>
+                <td data-label="Value" className={cn(cell, 'text-right num', stack.td)}>{value === null ? '—' : money(value, currency)}</td>
+                <td className={cn(cell, 'text-right', stack.td)}>
                   <button
                     type="button"
                     aria-label={`Remove row ${i + 1}`}

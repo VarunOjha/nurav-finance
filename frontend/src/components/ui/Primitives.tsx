@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { MouseEvent, ReactNode } from 'react'
 import { Loader2 } from 'lucide-react'
 import { cn } from '../../lib/cn'
 
@@ -126,18 +126,67 @@ export function ErrorBox({ message }: { message: string }) {
   )
 }
 
-/** Table shell: bordered, horizontally scrollable on small screens. */
-export function Table({ children, className }: { children: ReactNode; className?: string }) {
+/** Table shell: bordered, and a size container so columns can drop out when it's narrow (see `showFrom`). */
+export function Table({ children, className, stack }: { children: ReactNode; className?: string; stack?: StackAt }) {
   return (
-    <div className={cn('border border-line overflow-x-auto', className)}>
-      <table className="w-full border-collapse">{children}</table>
+    <div className={cn('border border-line overflow-x-auto [container:table/inline-size]', className)}>
+      <table className={cn('w-full border-collapse', stack && STACK[stack].table)}>{children}</table>
     </div>
   )
 }
 
+/**
+ * Editable grids can't drop columns — every field is needed — so below the
+ * given table width each row becomes a small card of labelled fields instead.
+ * Pass `stack` to Table, then `stacked(at).thead / tr / td` on the parts, and a
+ * `data-label` on every td (it becomes the field's label in card form).
+ */
+export type StackAt = 'lg' | 'xl'
+const STACK = {
+  lg: {
+    table: 'block t-lg:table',
+    thead: 'hidden t-lg:table-header-group',
+    tbody: 'block t-lg:table-row-group',
+    tr: 'grid grid-cols-2 t-sm:grid-cols-4 gap-x-3 gap-y-2 p-3 border-b border-line last:border-b-0 t-lg:table-row t-lg:p-0',
+    td: 'block border-b-0 p-0 t-lg:table-cell t-lg:border-b t-lg:px-2 t-lg:py-1.5 before:content-[attr(data-label)] before:block before:font-mono before:text-[10px] before:uppercase before:tracking-widest before:text-ink-muted before:mb-1 empty:before:hidden t-lg:before:content-none',
+    wide: 'col-span-2',
+  },
+  xl: {
+    table: 'block t-xl:table',
+    thead: 'hidden t-xl:table-header-group',
+    tbody: 'block t-xl:table-row-group',
+    tr: 'grid grid-cols-2 t-sm:grid-cols-4 gap-x-3 gap-y-2 p-3 border-b border-line last:border-b-0 t-xl:table-row t-xl:p-0',
+    td: 'block border-b-0 p-0 t-lg:p-0 t-xl:table-cell t-xl:border-b t-xl:px-2.5 t-xl:py-2.5 before:content-[attr(data-label)] before:block before:font-mono before:text-[10px] before:uppercase before:tracking-widest before:text-ink-muted before:mb-1 empty:before:hidden t-xl:before:content-none',
+    wide: 'col-span-2',
+  },
+} as const
+export const stacked = (at: StackAt) => STACK[at]
+
 export const th =
-  'text-left font-mono text-[10px] uppercase tracking-widest text-ink-muted font-medium px-4 py-2.5 border-b border-line bg-paper-warm whitespace-nowrap'
-export const td = 'font-mono text-xs text-ink px-4 py-2.5 border-b border-line whitespace-nowrap align-middle'
+  'text-left font-mono text-[10px] uppercase tracking-widest text-ink-muted font-medium px-2.5 t-lg:px-4 py-2.5 border-b border-line bg-paper-warm whitespace-nowrap'
+export const td = 'font-mono text-xs text-ink px-2.5 t-lg:px-4 py-2.5 border-b border-line whitespace-nowrap align-middle'
+
+/**
+ * Columns that only appear once the table is wide enough, so no table needs
+ * sideways scrolling. Put the same class on the column's th and every td.
+ * Whatever a hidden column carried should show elsewhere in the row (see `onlyBelow`).
+ */
+export const showFrom = {
+  sm: 'hidden t-sm:table-cell',
+  md: 'hidden t-md:table-cell',
+  lg: 'hidden t-lg:table-cell',
+  xl: 'hidden t-xl:table-cell',
+  '2xl': 'hidden t-2xl:table-cell',
+} as const
+
+/** The stand-in for a hidden column, inside another cell: shown only while that column is hidden. */
+export const onlyBelow = {
+  sm: 't-sm:hidden',
+  md: 't-md:hidden',
+  lg: 't-lg:hidden',
+  xl: 't-xl:hidden',
+  '2xl': 't-2xl:hidden',
+} as const
 
 /** Horizontal share bar (allocation, weights). */
 export function ShareBar({ share, className }: { share: number; className?: string }) {
@@ -146,4 +195,20 @@ export function ShareBar({ share, className }: { share: number; className?: stri
       <div className="h-full bg-ink" style={{ width: `${Math.max(0, Math.min(1, share)) * 100}%` }} />
     </div>
   )
+}
+
+/**
+ * Makes a whole table row open `go` on click. Clicks on links, buttons and inputs
+ * inside the row keep their own behaviour, and selecting text doesn't navigate.
+ * The row's name stays a real link, so keyboard and ctrl/middle-click still work.
+ */
+export function rowLink(go: () => void) {
+  return {
+    onClick: (e: MouseEvent<HTMLTableRowElement>) => {
+      if ((e.target as HTMLElement).closest('a, button, input, select, textarea, label')) return
+      if (window.getSelection()?.toString()) return
+      go()
+    },
+    className: 'cursor-pointer hover:bg-paper-warm/60',
+  }
 }

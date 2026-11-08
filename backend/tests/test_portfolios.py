@@ -178,3 +178,6 @@ def test_consolidated_shows_starting_stake_from_avg_buy_price(api: Api):
     assert Decimal(aapl["share"]) == Decimal("0.695652")
     # No buy price anywhere → no cost figures.
     assert tsla["cost"] is None and tsla["avg_buy_price"] is None and tsla["cost_share"] is None and tsla["gain"] is None
+    # Cost-side breakdowns cover the same holdings as the starting stake.
+    assert {s["label"]: Decimal(s["value"]) for s in usd["cost_by_portfolio"]} == {"Robinhood": 2000, "Schwab": 1500}
+    assert {s["label"]: Decimal(s["value"]) for s in usd["cost_by_asset_class"]} == {"stock": 3500}

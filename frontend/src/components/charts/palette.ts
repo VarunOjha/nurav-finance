@@ -6,7 +6,11 @@ import type { ChartTheme } from './chartTheme'
 // slots folds into a neutral "Other" — never a generated 9th hue.
 
 export const ASSET_CLASS_ORDER = ['stock', 'etf', 'mutual_fund', 'bond', 'cash', 'crypto', 'other']
-export const ACCOUNT_TYPE_ORDER = ['checking', 'savings', 'fixed_deposit', 'brokerage', 'investment', 'retirement', 'portfolio', 'other']
+export const ACCOUNT_TYPE_ORDER = ['checking', 'savings', 'fixed_deposit', 'brokerage', 'investment', 'retirement', 'other']
+// Analytics' "What it's in": the asset classes (same slots as above, so a class keeps
+// its colour across pages) plus investment/retirement balances of unknown make-up.
+// "other" has no slot there, so it folds into the grey Other slice.
+export const ALLOCATION_CLASS_ORDER = ['stock', 'etf', 'mutual_fund', 'bond', 'cash', 'crypto', 'unclassified']
 
 export const OTHER = 'Other'
 

@@ -4,6 +4,7 @@ import * as Popover from '@radix-ui/react-popover'
 import { BarChart3, Briefcase, Landmark, Menu, Palette, UserCircle } from 'lucide-react'
 import { Logo } from './Logo'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
+import { Breadcrumbs } from './Breadcrumbs'
 import { ThemePicker } from './ThemePicker'
 import { RefMode } from './RefMode'
 import { useAuth } from '../context/AuthContext'
@@ -150,9 +151,10 @@ export function AppLayout() {
             </Popover.Root>
           </div>
         </div>
-        {/* Workspace bar — everything below follows the selected workspace */}
-        <div className="border-t border-line px-3 sm:px-8 py-1 flex items-center min-w-0">
+        {/* Workspace bar — the selected workspace, then where you are in it */}
+        <div className="border-t border-line px-3 sm:px-8 py-1 flex items-center gap-1 min-w-0">
           <WorkspaceSwitcher />
+          <Breadcrumbs />
         </div>
       </header>
 

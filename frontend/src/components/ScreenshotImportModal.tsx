@@ -3,12 +3,15 @@ import { Check, ImagePlus, Loader2, X } from 'lucide-react'
 import { Button } from './ui/Button'
 import { Modal } from './ui/Modal'
 import { AmountInput } from './ui/AmountInput'
-import { Chip, Table, td, th } from './ui/Primitives'
+import { Chip, Table, stacked, td, th } from './ui/Primitives'
 import { cn } from '../lib/cn'
 import { parseAmount } from '../lib/amount'
 import { ASSET_CLASS_LABELS, formatDate, money } from '../lib/format'
 import { MAX_SCREENSHOTS, importScreenshots, screenshotProblem } from '../lib/screenshotImport'
 import type { AssetClass, ScreenshotCheck, ScreenshotEvent, ScreenshotField, ScreenshotResult, ScreenshotRow } from '../types/api'
+
+// Every field is editable, so on narrow screens each row becomes a card instead of dropping columns.
+const stack = stacked('lg')
 
 export interface ImportedHolding {
   symbol: string
@@ -452,8 +455,8 @@ export function ScreenshotImportModal({ open, onOpenChange, portfolioId, currenc
             )}
 
             {rows.length > 0 && (
-              <Table>
-                <thead>
+              <Table stack="lg">
+                <thead className={stack.thead}>
                   <tr>
                     <th className={th}>Symbol</th>
                     <th className={th}>Name</th>
@@ -467,7 +470,7 @@ export function ScreenshotImportModal({ open, onOpenChange, portfolioId, currenc
                     </th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className={stack.tbody}>
                   {rows.map((r) => {
                     const errs = errorsById.get(r.id) ?? []
                     const notes = r.source.issues.filter((i) => i.level !== 'error')
@@ -475,18 +478,18 @@ export function ScreenshotImportModal({ open, onOpenChange, portfolioId, currenc
                     const p = num(r.current_price)
                     const m = { q: marker(r, 'quantity'), b: marker(r, 'buy_price'), p: marker(r, 'current_price') }
                     return [
-                      <tr key={r.id} className={cn(errs.length || notes.some((i) => i.level === 'warn') ? '[&>td]:border-b-0' : undefined)}>
-                        <td className={cn(td, 'min-w-[7rem]')}>
+                      <tr key={r.id} className={cn(cn(errs.length || notes.some((i) => i.level === 'warn') ? '[&>td]:border-b-0' : undefined), stack.tr)}>
+                        <td data-label="Symbol" className={cn(td, 'min-w-[7rem]', stack.td)}>
                           <div className="flex items-center gap-1.5">
                             <input aria-label="Symbol" className={cn(cellInput, 'uppercase font-medium')} value={r.symbol} onChange={(e) => edit(r.id, { symbol: e.target.value.toUpperCase() })} />
                             {r.source.symbol_basis === 'proposed' && <Chip>new?</Chip>}
                             {r.source.rechecked.includes('added') && <Chip active>found</Chip>}
                           </div>
                         </td>
-                        <td className={cn(td, 'min-w-[10rem]')}>
+                        <td data-label="Name" className={cn(td, 'min-w-[7rem]', stack.td, stack.wide)}>
                           <input aria-label="Name" className={cellInput} value={r.name} onChange={(e) => edit(r.id, { name: e.target.value })} />
                         </td>
-                        <td className={cn(td, 'min-w-[7rem]')}>
+                        <td data-label="Class" className={cn(td, 'min-w-[7rem]', stack.td)}>
                           <select
                             aria-label="Asset class"
                             className={cn(cellInput, 'cursor-pointer [&>option]:bg-paper')}
@@ -500,10 +503,10 @@ export function ScreenshotImportModal({ open, onOpenChange, portfolioId, currenc
                             ))}
                           </select>
                         </td>
-                        <td className={cn(td, 'min-w-[6rem]', m.q.className)} title={m.q.title}>
+                        <td data-label="Quantity" className={cn(td, 'min-w-[5.5rem]', m.q.className, stack.td)} title={m.q.title}>
                           <AmountInput aria-label="Quantity" maxDecimals={8} className={cn(cellInput, 'text-right num')} value={r.quantity} onValueChange={(v) => edit(r.id, { quantity: v })} />
                         </td>
-                        <td className={cn(td, 'min-w-[6rem]', m.b.className)} title={m.b.title}>
+                        <td data-label="Buy price" className={cn(td, 'min-w-[5.5rem]', m.b.className, stack.td)} title={m.b.title}>
                           <AmountInput
                             aria-label="Buy price"
                             currency={currency}
@@ -514,7 +517,7 @@ export function ScreenshotImportModal({ open, onOpenChange, portfolioId, currenc
                             placeholder="optional"
                           />
                         </td>
-                        <td className={cn(td, 'min-w-[6rem]', m.p.className)} title={m.p.title}>
+                        <td data-label="Current price" className={cn(td, 'min-w-[5.5rem]', m.p.className, stack.td)} title={m.p.title}>
                           <AmountInput
                             aria-label="Current price"
                             currency={currency}
@@ -524,8 +527,8 @@ export function ScreenshotImportModal({ open, onOpenChange, portfolioId, currenc
                             onValueChange={(v) => edit(r.id, { current_price: v })}
                           />
                         </td>
-                        <td className={cn(td, 'text-right num font-medium')}>{q !== null && p !== null ? money(q * p, currency) : '—'}</td>
-                        <td className={cn(td, 'text-right py-0')}>
+                        <td data-label="Value" className={cn(td, 'text-right num font-medium', stack.td)}>{q !== null && p !== null ? money(q * p, currency) : '—'}</td>
+                        <td className={cn(td, 'text-right py-0', stack.td)}>
                           <button
                             type="button"
                             aria-label={`Remove ${r.symbol || 'row'}`}
@@ -537,8 +540,8 @@ export function ScreenshotImportModal({ open, onOpenChange, portfolioId, currenc
                         </td>
                       </tr>,
                       errs.length || notes.length ? (
-                        <tr key={`${r.id}-issues`}>
-                          <td colSpan={8} className="px-4 pb-2.5 pt-0 border-b border-line">
+                        <tr key={`${r.id}-issues`} className={stack.tr}>
+                          <td colSpan={8} className="block col-span-full t-lg:table-cell px-4 pb-2.5 pt-0 border-b border-line">
                             <ul className="font-mono text-[11px] space-y-0.5">
                               {errs.map((e, i) => (
                                 <li key={`e${i}`} className="text-error">
