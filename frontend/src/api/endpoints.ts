@@ -2,19 +2,28 @@ import { client } from './client'
 import type {
   AccountDetail,
   AccountInput,
+  AccountSplits,
   AccountSummary,
   AnalyticsRange,
   BalanceEntry,
   BalanceHistory,
+  Bucket,
   CurrencyConsolidation,
+  Dashboard,
+  EstimatorPool,
+  InquiryDetail,
+  InquirySummary,
   HoldingInput,
+  Metrics,
   Overview,
   PortfolioInput,
   PortfolioSummary,
   SnapshotComparison,
   SnapshotPrefill,
   SnapshotSummary,
-  Tag,
+  SplitInput,
+  Milestone,
+  MilestoneInput,
   Workspace,
   TokenResponse,
   User,
@@ -38,12 +47,31 @@ export const workspacesApi = {
   remove: (id: string) => client.delete(`/workspaces/${id}`),
 }
 
-export const tagsApi = {
-  list: () => data(client.get<Tag[]>('/tags')),
-  create: (body: { name: string; description?: string | null }) => data(client.post<Tag>('/tags', body)),
-  update: (id: string, body: { name?: string; description?: string | null }) => data(client.patch<Tag>(`/tags/${id}`, body)),
-  remove: (id: string) => client.delete(`/tags/${id}`),
-  seed: () => data(client.post<Tag[]>('/tags/seed')),
+export type BucketBody = { name?: string; description?: string | null; color?: number | null }
+
+export const bucketsApi = {
+  list: () => data(client.get<Bucket[]>('/buckets')),
+  create: (body: BucketBody & { name: string }) => data(client.post<Bucket>('/buckets', body)),
+  update: (id: string, body: BucketBody) => data(client.patch<Bucket>(`/buckets/${id}`, body)),
+  reorder: (ids: string[]) => data(client.put<Bucket[]>('/buckets/order', { ids })),
+  archive: (id: string) => data(client.post<Bucket>(`/buckets/${id}/archive`)),
+  unarchive: (id: string) => data(client.post<Bucket>(`/buckets/${id}/unarchive`)),
+  remove: (id: string) => client.delete(`/buckets/${id}`),
+  seed: () => data(client.post<Bucket[]>('/buckets/seed')),
+}
+
+export const splitsApi = {
+  get: (accountId: string) => data(client.get<AccountSplits>(`/accounts/${accountId}/splits`)),
+  create: (accountId: string, body: SplitInput) => data(client.post<AccountSplits>(`/accounts/${accountId}/splits`, body)),
+  remove: (accountId: string, splitId: string) => data(client.delete<AccountSplits>(`/accounts/${accountId}/splits/${splitId}`)),
+}
+
+export const milestonesApi = {
+  list: () => data(client.get<Milestone[]>('/milestones')),
+  create: (body: MilestoneInput) => data(client.post<Milestone>('/milestones', body)),
+  update: (id: string, body: MilestoneInput) => data(client.put<Milestone>(`/milestones/${id}`, body)),
+  remove: (id: string) => client.delete(`/milestones/${id}`),
+  metrics: () => data(client.get<Metrics>('/metrics')),
 }
 
 export const accountsApi = {
@@ -52,7 +80,6 @@ export const accountsApi = {
   create: (body: AccountInput) => data(client.post<AccountDetail>('/accounts', body)),
   update: (id: string, body: Partial<AccountInput>) => data(client.patch<AccountDetail>(`/accounts/${id}`, body)),
   remove: (id: string) => client.delete(`/accounts/${id}`),
-  reveal: (id: string) => data(client.post<{ account_number: string }>(`/accounts/${id}/reveal`)),
   balances: (id: string) => data(client.get<BalanceHistory>(`/accounts/${id}/balances`)),
   recordBalance: (id: string, body: { amount: string; as_of: string; note?: string | null }) =>
     data(client.post<BalanceEntry>(`/accounts/${id}/balances`, body)),
@@ -64,7 +91,7 @@ export const portfoliosApi = {
   consolidated: () => data(client.get<{ currencies: CurrencyConsolidation[] }>('/portfolios/consolidated')),
   get: (id: string) => data(client.get<PortfolioSummary>(`/portfolios/${id}`)),
   create: (body: PortfolioInput) => data(client.post<PortfolioSummary>('/portfolios', body)),
-  update: (id: string, body: Partial<PortfolioInput>) => data(client.patch<PortfolioSummary>(`/portfolios/${id}`, body)),
+  update: (id: string, body: Partial<Omit<PortfolioInput, 'snapshot'>>) => data(client.patch<PortfolioSummary>(`/portfolios/${id}`, body)),
   remove: (id: string) => client.delete(`/portfolios/${id}`),
   snapshots: (id: string) => data(client.get<SnapshotSummary[]>(`/portfolios/${id}/snapshots`)),
   snapshot: (id: string, snapshotId: string, compareTo?: string | null) =>
@@ -77,4 +104,15 @@ export const portfoliosApi = {
 
 export const analyticsApi = {
   overview: (range: AnalyticsRange) => data(client.get<Overview>('/analytics/overview', { params: { range } })),
+}
+
+export const dashboardApi = {
+  get: () => data(client.get<Dashboard>('/dashboard')),
+}
+
+export const estimatorApi = {
+  pool: () => data(client.get<EstimatorPool>('/estimator/pool')),
+  list: () => data(client.get<InquirySummary[]>('/estimator/inquiries')),
+  get: (id: string) => data(client.get<InquiryDetail>(`/estimator/inquiries/${id}`)),
+  remove: (id: string) => client.delete(`/estimator/inquiries/${id}`),
 }

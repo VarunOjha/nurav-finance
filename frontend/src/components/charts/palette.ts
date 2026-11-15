@@ -6,11 +6,11 @@ import type { ChartTheme } from './chartTheme'
 // slots folds into a neutral "Other" — never a generated 9th hue.
 
 export const ASSET_CLASS_ORDER = ['stock', 'etf', 'mutual_fund', 'bond', 'cash', 'crypto', 'other']
-export const ACCOUNT_TYPE_ORDER = ['checking', 'savings', 'fixed_deposit', 'brokerage', 'investment', 'retirement', 'other']
+export const ACCOUNT_TYPE_ORDER = ['checking', 'savings', 'fixed_deposit', 'brokerage', 'investment', 'retirement', 'other', 'asset']
 // Analytics' "What it's in": the asset classes (same slots as above, so a class keeps
 // its colour across pages) plus investment/retirement balances of unknown make-up.
 // "other" has no slot there, so it folds into the grey Other slice.
-export const ALLOCATION_CLASS_ORDER = ['stock', 'etf', 'mutual_fund', 'bond', 'cash', 'crypto', 'unclassified']
+export const ALLOCATION_CLASS_ORDER = ['stock', 'etf', 'mutual_fund', 'bond', 'cash', 'crypto', 'unclassified', 'property']
 
 export const OTHER = 'Other'
 
@@ -24,7 +24,7 @@ export function slotColors(theme: ChartTheme, order: readonly string[]): ColorOf
   }
 }
 
-/** Slots for free-text names (portfolios, tags): alphabetical, so stable across views. */
+/** Slots for free-text names (portfolios): alphabetical, so stable across views. */
 export function nameColors(theme: ChartTheme, names: Iterable<string>): ColorOf {
   const sorted = [...new Set(names)].sort((a, b) => a.localeCompare(b))
   return slotColors(theme, sorted)

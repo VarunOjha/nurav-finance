@@ -41,16 +41,17 @@ export function ChartCard({ title, aside, children, className }: { title: ReactN
   )
 }
 
-export function Swatch({ color, line = false }: { color: string; line?: boolean }) {
-  return <span aria-hidden="true" className={cn('inline-block shrink-0', line ? 'w-3 h-0.5' : 'w-2.5 h-2.5 rounded-[2px]')} style={{ background: color }} />
+export function Swatch({ color, line = false, dashed = false }: { color: string; line?: boolean; dashed?: boolean }) {
+  if (line && dashed) return <span aria-hidden="true" className="inline-block shrink-0 w-4 border-t-2 border-dashed" style={{ borderColor: color }} />
+  return <span aria-hidden="true" className={cn('inline-block shrink-0', line ? 'w-4 h-0.5' : 'w-2.5 h-2.5 rounded-[2px]')} style={{ background: color }} />
 }
 
-export function Legend({ items, className }: { items: { label: string; color: string; line?: boolean }[]; className?: string }) {
+export function Legend({ items, className }: { items: { label: string; color: string; line?: boolean; dashed?: boolean }[]; className?: string }) {
   return (
     <ul className={cn('flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] text-ink-muted', className)}>
       {items.map((i) => (
         <li key={i.label} className="inline-flex items-center gap-1.5">
-          <Swatch color={i.color} line={i.line} /> {i.label}
+          <Swatch color={i.color} line={i.line} dashed={i.dashed} /> {i.label}
         </li>
       ))}
     </ul>

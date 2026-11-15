@@ -12,31 +12,20 @@ ASSET_CLASSES = ("stock", "etf", "mutual_fund", "bond", "cash", "crypto", "other
 
 
 class Portfolio(IdMixin, TimestampMixin, SoftDeleteMixin, Base):
+    """What a brokerage account holds, as dated snapshots. One live portfolio per account."""
+
     __tablename__ = "portfolios"
+    __table_args__ = (Index("uq_portfolios_account_live", "account_id", unique=True, postgresql_where=text("deleted_at IS NULL")),)
 
     workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id"), index=True)
     name: Mapped[str] = mapped_column(String(120))
     provider: Mapped[str | None] = mapped_column(String(120), nullable=True)
     currency: Mapped[str] = mapped_column(String(3))
-    # Optional link to the brokerage cash account (same workspace only).
+    # The brokerage account it belongs to (same workspace); at most one live portfolio each.
     account_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("accounts.id"), nullable=True)
-    opened_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     closed_on: Mapped[date | None] = mapped_column(Date, nullable=True)
-    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     account = relationship("Account")
-    tag_links = relationship("PortfolioTag", back_populates="portfolio")
-
-
-class PortfolioTag(IdMixin, TimestampMixin, SoftDeleteMixin, Base):
-    __tablename__ = "portfolio_tags"
-    __table_args__ = (Index("uq_portfolio_tags_live", "portfolio_id", "tag_id", unique=True, postgresql_where=text("deleted_at IS NULL")),)
-
-    portfolio_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("portfolios.id"), index=True)
-    tag_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tags.id"), index=True)
-
-    portfolio = relationship("Portfolio", back_populates="tag_links")
-    tag = relationship("Tag")
 
 
 class Snapshot(IdMixin, TimestampMixin, SoftDeleteMixin, Base):

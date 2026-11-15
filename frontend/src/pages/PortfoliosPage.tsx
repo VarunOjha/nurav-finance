@@ -19,9 +19,9 @@ import { BankLogo } from '../components/BankLogo'
 import { InvestedTable, NowTable, WinnersLosers, outcomes } from '../components/HoldingsTables'
 import { ShareShift } from '../components/charts/ShareShift'
 import { AccordionSection } from '../components/ui/Accordion'
-import { PortfolioFormModal, afterPortfolioSaved } from '../components/PortfolioFormModal'
+import { PortfolioFormModal } from '../components/PortfolioFormModal'
 import { Button } from '../components/ui/Button'
-import { Chip, Empty, ErrorBox, Loading, Page, PageHeader, StatCard, Table, Tabs, onlyBelow, rowLink, showFrom, td, th } from '../components/ui/Primitives'
+import { Empty, ErrorBox, Loading, Page, PageHeader, StatCard, Table, Tabs, onlyBelow, rowLink, showFrom, td, th } from '../components/ui/Primitives'
 import { useWorkspace } from '../context/WorkspaceContext'
 import { useAccounts, useConsolidated, usePortfolios } from '../hooks/queries'
 import { cn } from '../lib/cn'
@@ -61,7 +61,7 @@ export default function PortfoliosPage() {
         <ErrorBox message={apiErrorMessage(portfolios.error, 'Could not load portfolios')} />
       ) : list.length === 0 ? (
         <Empty title="No portfolios yet">
-          <span>Add Robinhood, Zerodha, Fidelity… then record holdings snapshots over time.</span>
+          <span>Add one per brokerage account (Robinhood, Zerodha, Fidelity…) with its holdings today, then record new holdings over time.</span>
           <Button onClick={() => setAdding(true)}>+ Add portfolio</Button>
         </Empty>
       ) : (
@@ -99,7 +99,6 @@ export default function PortfoliosPage() {
                 <th className={th}>Portfolio</th>
                 <th className={cn(th, showFrom['2xl'])}>Currency</th>
                 <th className={cn(th, showFrom.xl)}>Linked account</th>
-                <th className={cn(th, showFrom['2xl'])}>Tags</th>
                 <th className={cn(th, 'text-right')}>Value</th>
                 <th className={cn(th, 'text-right', showFrom.sm)}>Δ prev. snapshot</th>
                 <th className={cn(th, showFrom.md)}>12 months</th>
@@ -143,13 +142,6 @@ export default function PortfoliosPage() {
                         '—'
                       )}
                     </td>
-                    <td className={cn(td, showFrom['2xl'])}>
-                      <div className="flex gap-1.5 flex-wrap">
-                        {p.tags.map((t) => (
-                          <Chip key={t.id}>{t.name}</Chip>
-                        ))}
-                      </div>
-                    </td>
                     <td className={cn(td, 'text-right num', closed && 'text-ink-muted')}>
                       <div className="text-[13px] font-medium">{money(p.value, p.currency)}</div>
                       <div className={cn('text-[10px] mt-0.5', deltaClass(p.delta), onlyBelow.sm)}>{signedMoney(p.delta, p.currency)}</div>
@@ -171,7 +163,7 @@ export default function PortfoliosPage() {
                           onClick={() => navigate(`/portfolios/${p.id}/snapshots/new`)}
                           className="font-mono text-[10px] uppercase tracking-widest text-ink-muted hover:text-ink hover:underline"
                         >
-                          Record snapshot
+                          Record holdings
                         </button>
                       )}
                     </td>
@@ -191,7 +183,7 @@ export default function PortfoliosPage() {
               <CurrencyPanel data={active} />
             </section>
           ) : (
-            <Empty title="No snapshots yet">Record a snapshot to see consolidated holdings.</Empty>
+            <Empty title="Nothing to consolidate">Only open portfolios with a snapshot are merged here; record holdings on one to see them.</Empty>
           )}
           <p className="font-mono text-[11px] text-ink-muted">
             Consolidation uses each active portfolio&apos;s latest snapshot. Closed portfolios keep their history but aren&apos;t included.
@@ -199,7 +191,7 @@ export default function PortfoliosPage() {
         </>
       )}
 
-      <PortfolioFormModal open={adding} onOpenChange={setAdding} onSaved={(p, o) => navigate(afterPortfolioSaved(p, o))} />
+      <PortfolioFormModal open={adding} onOpenChange={setAdding} onSaved={(url) => navigate(url)} />
     </Page>
   )
 }

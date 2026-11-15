@@ -2,7 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
@@ -10,8 +10,7 @@ from sqlalchemy import text
 import nurav_creds
 from database import SessionLocal
 from dependencies import get_current_user
-from routers import accounts, analytics, auth, portfolios, screenshot_import, tags, workspaces
-from services.crypto import CryptoConfigError
+from routers import accounts, analytics, auth, buckets, dashboard, estimator, milestones, portfolios, screenshot_import, splits, workspaces
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s [%(name)s] %(message)s")
 
@@ -37,20 +36,18 @@ app = FastAPI(
 )
 
 
-@app.exception_handler(CryptoConfigError)
-async def _crypto_error(_: Request, exc: CryptoConfigError) -> JSONResponse:
-    # Message is key-free by construction (see services/crypto.py).
-    return JSONResponse(status_code=500, content={"detail": str(exc)})
-
-
 _auth = [Depends(get_current_user)]
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 app.include_router(workspaces.router, prefix="/api/workspaces", tags=["Workspaces"], dependencies=_auth)
-app.include_router(tags.router, prefix="/api/tags", tags=["Tags"], dependencies=_auth)
+app.include_router(buckets.router, prefix="/api/buckets", tags=["Buckets"], dependencies=_auth)
 app.include_router(accounts.router, prefix="/api/accounts", tags=["Accounts"], dependencies=_auth)
+app.include_router(splits.router, prefix="/api/accounts", tags=["Bucket splits"], dependencies=_auth)
 app.include_router(portfolios.router, prefix="/api/portfolios", tags=["Portfolios"], dependencies=_auth)
 app.include_router(screenshot_import.router, prefix="/api/portfolios", tags=["Screenshot import"], dependencies=_auth)
 app.include_router(analytics.router, prefix="/api/analytics", tags=["Analytics"], dependencies=_auth)
+app.include_router(milestones.router, prefix="/api", tags=["Milestones & metrics"], dependencies=_auth)
+app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"], dependencies=_auth)
+app.include_router(estimator.router, prefix="/api/estimator", tags=["Wealth estimator"], dependencies=_auth)
 
 
 @app.get("/health", tags=["Health"])

@@ -1,21 +1,20 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { ChevronDown, ChevronRight, ImagePlus, Keyboard, Plus, X } from 'lucide-react'
+import { ImagePlus, Keyboard, Plus, X } from 'lucide-react'
 import { apiErrorMessage } from '../api/client'
-import { useAccounts, usePortfolioMutations } from '../hooks/queries'
+import { useAccounts, usePortfolioMutations, usePortfolios } from '../hooks/queries'
 import { useWorkspace } from '../context/WorkspaceContext'
 import { COUNTRY_CURRENCY, type Bank } from '../lib/banks'
 import { ASSET_CLASS_LABELS, CURRENCIES, PORTFOLIO_ACCOUNT_TYPES, money, todayISO } from '../lib/format'
 import { blankRow, isBlank, rowValue, rowsToHoldings, type HoldingRow } from '../lib/holdingRows'
 import { cn } from '../lib/cn'
-import { handOffScreenshots } from '../lib/pendingScreenshots'
+import { draftKey, handOffScreenshots } from '../lib/pendingScreenshots'
 import { MAX_SCREENSHOTS, screenshotProblem } from '../lib/screenshotImport'
 import type { AccountSummary, AssetClass, PortfolioInput, PortfolioSummary } from '../types/api'
 import { AmountInput } from './ui/AmountInput'
 import { Table, stacked, td, th } from './ui/Primitives'
 import { BankPicker } from './BankPicker'
-import { TagPicker } from './TagPicker'
 import { Button } from './ui/Button'
-import { FormError, Input, Label, Select, TextArea } from './ui/Field'
+import { FormError, Input, Select } from './ui/Field'
 import { DateField } from './ui/DateField'
 import { Modal } from './ui/Modal'
 
@@ -28,13 +27,22 @@ interface Props {
   portfolio?: PortfolioSummary
   // Adding from an account's page: provider, currency and the link come from it.
   forAccount?: Pick<AccountSummary, 'id' | 'name' | 'institution' | 'currency'>
-  // recorded: the Manual entry holdings were saved as its first snapshot too.
-  onSaved?: (p: PortfolioSummary, opts: { recorded: boolean }) => void
+  // Adding: where to go next (the portfolio, its Record holdings page, or the new-portfolio page).
+  onSaved?: (url: string) => void
 }
 
-/** Where to go after saving: the portfolio if holdings were recorded, else its Record snapshot page. */
-export const afterPortfolioSaved = (p: PortfolioSummary, { recorded }: { recorded: boolean }) =>
-  recorded ? `/portfolios/${p.id}` : `/portfolios/${p.id}/snapshots/new`
+/**
+ * The page that records a new portfolio's first holdings. Nothing exists until
+ * they're saved there: the portfolio is created together with them.
+ */
+function newPortfolioUrl(body: PortfolioInput): string {
+  const q = new URLSearchParams()
+  for (const k of ['name', 'provider', 'currency'] as const) {
+    const v = body[k]
+    if (v) q.set(k, v)
+  }
+  return `/accounts/${body.account_id}/portfolio/new?${q.toString()}`
+}
 
 interface FormState {
   name: string
@@ -42,10 +50,6 @@ interface FormState {
   provider: string
   currency: string
   account_id: string
-  opened_on: string
-  closed_on: string
-  notes: string
-  tag_ids: string[]
 }
 
 function initial(p?: PortfolioSummary, a?: Props['forAccount']): FormState {
@@ -56,58 +60,51 @@ function initial(p?: PortfolioSummary, a?: Props['forAccount']): FormState {
     provider: p?.provider ?? (fromAccount ? (a.institution ?? '') : ''),
     currency: p?.currency ?? (fromAccount ? a.currency : 'USD'),
     account_id: p?.account?.id ?? (fromAccount ? a.id : ''),
-    opened_on: p?.opened_on ?? '',
-    closed_on: p?.closed_on ?? '',
-    notes: p?.notes ?? '',
-    tag_ids: p?.tags.map((t) => t.id) ?? [],
   }
 }
 
 const orNull = (s: string) => (s.trim() ? s.trim() : null)
 
 // Add / edit a portfolio. Every portfolio belongs to a brokerage account, picked
-// first; it fills in the provider, currency and name. Dates, tags and notes sit
-// under "More details" — folded when adding, open when editing.
+// first; it fills in the provider, currency and name. Closing happens on the
+// portfolio's page.
 export function PortfolioFormModal({ open, onOpenChange, portfolio, forAccount, onSaved }: Props) {
   const { workspace } = useWorkspace()
   const { data: accounts = [] } = useAccounts()
   const { create, update, createSnapshot } = usePortfolioMutations()
+  const { data: portfolios = [] } = usePortfolios()
   const [form, setForm] = useState<FormState>(() => initial(portfolio, forAccount))
-  const [more, setMore] = useState(!!portfolio)
   const [error, setError] = useState<string | null>(null)
-  // Adding only: how the first holdings come in — typed on the snapshot page, or read from screenshots.
+  // Adding only: how the holdings come in — typed here (or on the next page), or read from screenshots there.
   const [mode, setMode] = useState<'manual' | 'screenshots'>('manual')
   const [files, setFiles] = useState<File[]>([])
-  // Manual entry: the first snapshot, typed right here (optional).
+  // Manual entry: holdings typed right here (optional) — the first snapshot, or the next one if the account has its portfolio.
   const [asOf, setAsOf] = useState(todayISO())
   const [rows, setRows] = useState<HoldingRow[]>(() => [blankRow()])
-  // Set once the portfolio exists, so a failed snapshot save retries only the snapshot.
-  const created = useRef<PortfolioSummary | null>(null)
 
   useEffect(() => {
     if (open) {
       setForm(initial(portfolio, forAccount))
-      setMore(!!portfolio)
       setError(null)
       setMode('manual')
       setFiles([])
       setAsOf(todayISO())
       setRows([blankRow()])
-      created.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset on open only
   }, [open, portfolio])
 
   const set = (key: keyof FormState) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [key]: e.target.value }))
   const editing = !!portfolio
+  // One portfolio per account: when the account already has it, holdings go on it as a new snapshot.
+  const portfolioOf = (accountId: string) => portfolios.find((x) => x.account?.id === accountId) ?? null
+  const existing = editing ? null : portfolioOf(form.account_id)
   const currencyLocked = editing && (portfolio?.snapshot_count ?? 0) > 0
   const saving = create.isPending || update.isPending || createSnapshot.isPending
   const typed = rows.filter((r) => !isBlank(r)).length
   const currencies = CURRENCIES.includes(form.currency) ? CURRENCIES : [form.currency, ...CURRENCIES]
   // Brokerage accounts it can belong to; editing keeps its current account listed even if closed.
-  const brokerages = accounts.filter(
-    (a) => PORTFOLIO_ACCOUNT_TYPES.has(a.account_type) && (a.status === 'active' || a.id === form.account_id),
-  )
+  const brokerages = accounts.filter((a) => PORTFOLIO_ACCOUNT_TYPES.has(a.account_type) && (a.status === 'active' || a.id === form.account_id))
   const pickAccount = (id: string) => {
     const a = accounts.find((x) => x.id === id)
     setForm((f) => {
@@ -123,7 +120,6 @@ export function PortfolioFormModal({ open, onOpenChange, portfolio, forAccount, 
       }
     })
   }
-  const filled = [!!(form.opened_on || form.closed_on), form.tag_ids.length > 0, !!form.notes.trim()].filter(Boolean).length
 
   // A known provider fills in its home currency and suggests the name until one is typed.
   const pickProvider = (provider: string, bank: Bank | null) =>
@@ -140,13 +136,8 @@ export function PortfolioFormModal({ open, onOpenChange, portfolio, forAccount, 
       setError('Choose the brokerage account it belongs to')
       return
     }
-    if (!form.name.trim()) {
+    if (!existing && !form.name.trim()) {
       setError('Name is required')
-      return
-    }
-    if (form.opened_on && form.closed_on && form.closed_on < form.opened_on) {
-      setMore(true)
-      setError("Closed date can't be before the opened date")
       return
     }
     if (!editing && mode === 'screenshots' && files.length === 0) {
@@ -166,27 +157,46 @@ export function PortfolioFormModal({ open, onOpenChange, portfolio, forAccount, 
       provider: orNull(form.provider),
       currency: form.currency,
       account_id: form.account_id,
-      opened_on: form.opened_on || null,
-      closed_on: form.closed_on || null,
-      notes: orNull(form.notes),
-      tag_ids: form.tag_ids,
     }
-    let saved: PortfolioSummary | null = created.current
-    try {
-      if (editing) saved = await update.mutateAsync({ id: portfolio!.id, body })
-      else if (!saved) saved = created.current = await create.mutateAsync(body)
-    } catch (err) {
-      return setError(apiErrorMessage(err, 'Could not save the portfolio'))
-    }
-    if (checked && 'holdings' in checked) {
+    if (editing) {
       try {
-        await createSnapshot.mutateAsync({ id: saved!.id, as_of: asOf, holdings: checked.holdings })
+        await update.mutateAsync({ id: portfolio!.id, body })
       } catch (err) {
-        return setError(`The portfolio is saved, but not its holdings: ${apiErrorMessage(err, 'try again')}`)
+        return setError(apiErrorMessage(err, 'Could not save the portfolio'))
       }
+      return onOpenChange(false)
     }
-    if (!editing) handOffScreenshots(saved!.id, mode === 'screenshots' ? files : [])
-    onSaved?.(saved!, { recorded: !!checked })
+
+    const first = checked && 'holdings' in checked ? { as_of: asOf, holdings: checked.holdings } : null
+    const shots = mode === 'screenshots' ? files : []
+    let url: string
+    if (existing) {
+      // The account's portfolio already exists: these holdings are its next snapshot.
+      if (first) {
+        try {
+          await createSnapshot.mutateAsync({ id: existing.id, ...first })
+        } catch (err) {
+          return setError(apiErrorMessage(err, 'Could not save the holdings'))
+        }
+        url = `/portfolios/${existing.id}`
+      } else {
+        handOffScreenshots(existing.id, shots)
+        url = `/portfolios/${existing.id}/snapshots/new`
+      }
+    } else if (first) {
+      // Portfolio and first holdings are saved together: both or neither.
+      try {
+        const created = await create.mutateAsync({ ...body, snapshot: first })
+        url = `/portfolios/${created.id}`
+      } catch (err) {
+        return setError(apiErrorMessage(err, 'Could not save the portfolio'))
+      }
+    } else {
+      // Nothing is saved yet: the next page creates the portfolio with its first holdings.
+      handOffScreenshots(draftKey(form.account_id), shots)
+      url = newPortfolioUrl(body)
+    }
+    onSaved?.(url)
     onOpenChange(false)
   }
 
@@ -195,7 +205,7 @@ export function PortfolioFormModal({ open, onOpenChange, portfolio, forAccount, 
       open={open}
       onOpenChange={onOpenChange}
       size={editing ? 'lg' : 'xl'}
-      title={editing ? `Edit portfolio · ${portfolio!.name}` : 'Add portfolio'}
+      title={editing ? `Edit portfolio · ${portfolio!.name}` : existing ? `Record holdings · ${existing.name}` : 'Add portfolio'}
       subtitle={
         <>
           Workspace <span className="text-ink">{workspace?.name}</span> · holdings are recorded as dated snapshots
@@ -214,10 +224,12 @@ export function PortfolioFormModal({ open, onOpenChange, portfolio, forAccount, 
               {editing
                 ? 'Save changes'
                 : mode === 'screenshots' && files.length
-                  ? `Save & read ${files.length} screenshot${files.length === 1 ? '' : 's'}`
+                  ? `${existing ? 'Read' : 'Continue & read'} ${files.length} screenshot${files.length === 1 ? '' : 's'}`
                   : mode === 'manual' && typed
-                    ? `Save portfolio & ${typed} holding${typed === 1 ? '' : 's'}`
-                    : 'Save portfolio'}
+                    ? `Save ${existing ? '' : 'portfolio & '}${typed} holding${typed === 1 ? '' : 's'}`
+                    : existing
+                      ? 'Record holdings'
+                      : 'Continue to holdings'}
             </Button>
           </div>
         </div>
@@ -255,8 +267,8 @@ export function PortfolioFormModal({ open, onOpenChange, portfolio, forAccount, 
 
         {brokerages.length === 0 ? (
           <div role="alert" className="border border-dashed border-line px-4 py-3 font-mono text-[11px] text-ink-muted">
-            Portfolios live inside a <span className="text-ink">Brokerage</span> account. Add one on the Accounts page first (or change an
-            account&apos;s type to Brokerage), then add its portfolio from there.
+            Portfolios live inside a <span className="text-ink">Brokerage</span> account. Add one on the Accounts page first (or change an account&apos;s type
+            to Brokerage), then add its portfolio from there.
           </div>
         ) : (
           <Select
@@ -270,72 +282,67 @@ export function PortfolioFormModal({ open, onOpenChange, portfolio, forAccount, 
             <option value="" disabled>
               Choose an account…
             </option>
-            {brokerages.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-                {a.institution && a.institution !== a.name ? ` · ${a.institution}` : ''} · {a.currency}
-                {a.status === 'closed' ? ' · closed' : ''}
-              </option>
-            ))}
+            {brokerages.map((a) => {
+              const has = editing ? null : portfolioOf(a.id)
+              return (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                  {a.institution && a.institution !== a.name ? ` · ${a.institution}` : ''} · {a.currency}
+                  {a.status === 'closed' ? ' · closed' : ''}
+                  {has ? ` · portfolio: ${has.name}` : ''}
+                </option>
+              )
+            })}
           </Select>
         )}
 
-        <BankPicker id="pf-provider" label="Provider" noneLabel="No provider · self-managed" value={form.provider} onChange={pickProvider} />
+        {existing && (
+          <p role="note" className="border border-line bg-paper-warm px-4 py-3 font-mono text-[11px] text-ink-muted">
+            This account already has its portfolio <span className="text-ink">“{existing.name}”</span>. An account has one portfolio, so these holdings are
+            recorded on it as a new dated snapshot.
+          </p>
+        )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,3fr)_minmax(0,1fr)] gap-x-6 gap-y-4">
-          <Input
-            id="pf-name"
-            label="Name"
-            value={form.name}
-            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value, name_touched: e.target.value.trim() !== '' }))}
-            placeholder="e.g. Wealthfront"
-            required
-          />
-          <Select
-            id="pf-currency"
-            label="Currency"
-            value={form.currency}
-            onChange={set('currency')}
-            disabled={currencyLocked}
-            hint={currencyLocked ? 'Locked' : undefined}
-          >
-            {currencies.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </Select>
-        </div>
+        {!existing && <BankPicker id="pf-provider" label="Provider" noneLabel="No provider · self-managed" value={form.provider} onChange={pickProvider} />}
+
+        {!existing && (
+          <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,3fr)_minmax(0,1fr)] gap-x-6 gap-y-4">
+            <Input
+              id="pf-name"
+              label="Name"
+              value={form.name}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  name: e.target.value,
+                  name_touched: e.target.value.trim() !== '',
+                }))
+              }
+              placeholder="e.g. Wealthfront"
+              required
+            />
+            <Select
+              id="pf-currency"
+              label="Currency"
+              value={form.currency}
+              onChange={set('currency')}
+              disabled={currencyLocked}
+              hint={currencyLocked ? 'Locked' : undefined}
+            >
+              {currencies.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )}
 
         {!editing && mode === 'screenshots' && <ScreenshotDrop files={files} onChange={setFiles} />}
-        {!editing && mode === 'manual' && <HoldingsEntry currency={form.currency} asOf={asOf} onAsOf={setAsOf} rows={rows} onRows={setRows} />}
+        {!editing && mode === 'manual' && (
+          <HoldingsEntry isNew={!existing} currency={existing?.currency ?? form.currency} asOf={asOf} onAsOf={setAsOf} rows={rows} onRows={setRows} />
+        )}
 
-        <div className="border-t border-ink pt-1">
-          <button
-            type="button"
-            aria-expanded={more}
-            aria-controls="portfolio-more"
-            onClick={() => setMore((m) => !m)}
-            className="w-full flex items-center gap-2 py-3 min-h-11 font-mono text-[11px] uppercase tracking-widest text-ink hover:underline"
-          >
-            {more ? <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" /> : <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />}
-            More details · optional
-            <span className="ml-auto normal-case tracking-normal text-[10px] text-ink-muted">{filled ? `${filled} of 3 filled` : 'dates · tags · notes'}</span>
-          </button>
-          {more && (
-            <div id="portfolio-more" className="flex flex-col gap-5 pt-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <DateField id="pf-opened" label="Opened on" value={form.opened_on} onChange={set('opened_on')} />
-                <DateField id="pf-closed" label="Closed on" value={form.closed_on} onChange={set('closed_on')} hint="Leave empty while active" />
-              </div>
-              <div>
-                <Label>Tags</Label>
-                <TagPicker value={form.tag_ids} onChange={(tag_ids) => setForm((f) => ({ ...f, tag_ids }))} />
-              </div>
-              <TextArea id="pf-notes" label="Notes" value={form.notes} onChange={set('notes')} />
-            </div>
-          )}
-        </div>
         <button type="submit" className="hidden" aria-hidden="true" tabIndex={-1} />
       </form>
     </Modal>
@@ -343,7 +350,7 @@ export function PortfolioFormModal({ open, onOpenChange, portfolio, forAccount, 
 }
 
 // Pick holdings screenshots up front; they're read on the new portfolio's snapshot
-// page right after saving. Drop, click or paste.
+// page right after this window. Drop, click or paste.
 function ScreenshotDrop({ files, onChange }: { files: File[]; onChange: (f: File[]) => void }) {
   const input = useRef<HTMLInputElement>(null)
   const [problems, setProblems] = useState<string[]>([])
@@ -406,7 +413,7 @@ function ScreenshotDrop({ files, onChange }: { files: File[]; onChange: (f: File
         <ImagePlus className="w-5 h-5 text-ink-muted" aria-hidden="true" />
         <p className="font-mono text-xs text-ink">Drop holdings screenshots, click to choose, or paste (Ctrl+V)</p>
         <p className="font-mono text-[10px] text-ink-muted">
-          Up to {MAX_SCREENSHOTS} · PNG, JPEG or WebP · 10 MB each · read by an AI model after saving, not stored
+          Up to {MAX_SCREENSHOTS} · PNG, JPEG or WebP · 10 MB each · read by an AI model on the next page, not stored
         </p>
         <input
           ref={input}
@@ -458,15 +465,17 @@ const cellInput =
   'w-full bg-transparent border-0 border-b border-line focus:border-ink focus:outline-none font-mono text-xs text-ink py-1.5 placeholder:text-ink-faint'
 const cell = cn(td, 'px-2 py-1.5')
 
-// Manual entry: type the holdings as the portfolio's first snapshot. Optional —
-// leave it empty and the Record snapshot page opens after saving instead.
+// Manual entry: type the holdings here. Optional — leave it empty and the next page
+// (a new portfolio's Add portfolio page, or Record holdings) is where you enter them.
 function HoldingsEntry({
+  isNew,
   currency,
   asOf,
   onAsOf,
   rows,
   onRows,
 }: {
+  isNew: boolean // false: the account has its portfolio, so these are its next snapshot
   currency: string
   asOf: string
   onAsOf: (d: string) => void
@@ -480,9 +489,9 @@ function HoldingsEntry({
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h3 id="pf-holdings-title" className="font-mono text-[11px] uppercase tracking-widest text-ink">
-            Holdings · first snapshot
+            Holdings · {isNew ? 'first snapshot' : 'new snapshot'}
           </h3>
-          <p className="font-mono text-[10px] text-ink-muted mt-1">Optional — leave empty to add them after saving (or paste a CSV there).</p>
+          <p className="font-mono text-[10px] text-ink-muted mt-1">Optional — leave empty to enter them on the next page (or paste a CSV there).</p>
         </div>
         <DateField id="pf-asof" label="As of" max={todayISO()} value={asOf} onChange={(e) => onAsOf(e.target.value)} className="w-44" />
       </div>
@@ -516,7 +525,13 @@ function HoldingsEntry({
                   />
                 </td>
                 <td data-label="Name" className={cn(cell, 'min-w-[8rem]', stack.td, stack.wide)}>
-                  <input aria-label={`Name, row ${i + 1}`} className={cellInput} value={r.name} onChange={(e) => edit(r.key, { name: e.target.value })} placeholder="optional" />
+                  <input
+                    aria-label={`Name, row ${i + 1}`}
+                    className={cellInput}
+                    value={r.name}
+                    onChange={(e) => edit(r.key, { name: e.target.value })}
+                    placeholder="optional"
+                  />
                 </td>
                 <td data-label="Class" className={cn(cell, 'min-w-[6.5rem]', stack.td)}>
                   <select
@@ -564,7 +579,9 @@ function HoldingsEntry({
                     placeholder="0.00"
                   />
                 </td>
-                <td data-label="Value" className={cn(cell, 'text-right num', stack.td)}>{value === null ? '—' : money(value, currency)}</td>
+                <td data-label="Value" className={cn(cell, 'text-right num', stack.td)}>
+                  {value === null ? '—' : money(value, currency)}
+                </td>
                 <td className={cn(cell, 'text-right', stack.td)}>
                   <button
                     type="button"

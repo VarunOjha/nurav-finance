@@ -14,7 +14,6 @@ docker-compose.yml. ENV_FILE only matters for bare local runs.
 import logging
 import os
 
-from cryptography.fernet import Fernet
 from pydantic import Field
 from pydantic_settings import (
     BaseSettings,
@@ -29,7 +28,7 @@ _logger = logging.getLogger("config")
 
 # Vault keys the app cannot run without. Checked against the vault MAP (not the
 # populated field) so an absent key is caught instead of masked by a default.
-REQUIRED_VAULT_KEYS = ("DATABASE_URL", "JWT_SECRET", "ACCOUNT_NUMBER_KEY")
+REQUIRED_VAULT_KEYS = ("DATABASE_URL", "JWT_SECRET")
 MIN_JWT_SECRET_LENGTH = 32
 
 
@@ -62,13 +61,14 @@ class Settings(BaseSettings):
     )
     jwt_secret: str = Field(default="")
     jwt_expire_minutes: int = Field(default=720)
-    account_number_key: str = Field(default="")
 
     # Screenshot import (OpenRouter). The key is optional: without it the app
     # boots and the import says what's missing. The model must accept images.
     openrouter_api_key: str = Field(default="")
     openrouter_base_url: str = Field(default="https://openrouter.ai/api/v1")
     screenshot_model: str = Field(default="anthropic/claude-sonnet-5.5")
+    # Wealth estimator: one text-only review per inquiry (same key).
+    estimator_model: str = Field(default="anthropic/claude-sonnet-5.5")
     # Sent as HTTP-Referer / X-Title so OpenRouter can attribute the calls.
     app_url: str = Field(default="http://localhost:8020")
 
@@ -117,10 +117,6 @@ def _validate(s: Settings) -> None:
         )
     if len(s.jwt_secret) < MIN_JWT_SECRET_LENGTH:
         raise ConfigError(f"JWT_SECRET must be a random value of at least {MIN_JWT_SECRET_LENGTH} characters.")
-    try:
-        Fernet(s.account_number_key.strip().encode())
-    except ValueError:
-        raise ConfigError("ACCOUNT_NUMBER_KEY is not a valid Fernet key.") from None
 
 
 # Singleton

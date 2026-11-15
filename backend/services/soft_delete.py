@@ -14,15 +14,16 @@ from sqlalchemy.orm import Session
 from database import utcnow
 from models import (
     Account,
-    AccountIdentifier,
     AccountLink,
-    AccountTag,
+    AccountSplit,
+    AccountSplitLine,
     BalanceEntry,
+    BucketTarget,
     Holding,
+    Milestone,
     Portfolio,
-    PortfolioTag,
     Snapshot,
-    Tag,
+    WealthInquiry,
     Workspace,
 )
 
@@ -42,25 +43,26 @@ def delete_portfolio(db: Session, portfolio_id: uuid.UUID, now: datetime | None 
     snapshot_ids = select(Snapshot.id).where(Snapshot.portfolio_id == portfolio_id)
     _mark(db, Holding, Holding.snapshot_id.in_(snapshot_ids), now=now)
     _mark(db, Snapshot, Snapshot.portfolio_id == portfolio_id, now=now)
-    _mark(db, PortfolioTag, PortfolioTag.portfolio_id == portfolio_id, now=now)
     _mark(db, Portfolio, Portfolio.id == portfolio_id, now=now)
 
 
 def delete_account(db: Session, account_id: uuid.UUID, now: datetime | None = None) -> None:
     now = now or utcnow()
-    for model in (AccountIdentifier, AccountLink, AccountTag, BalanceEntry):
+    for model in (AccountLink, BalanceEntry):
         _mark(db, model, model.account_id == account_id, now=now)
+    split_ids = select(AccountSplit.id).where(AccountSplit.account_id == account_id)
+    _mark(db, AccountSplitLine, AccountSplitLine.split_id.in_(split_ids), now=now)
+    _mark(db, AccountSplit, AccountSplit.account_id == account_id, now=now)
     # Portfolios belong to their account, so they (and their snapshots) go with it.
     for (pid,) in db.execute(select(Portfolio.id).where(Portfolio.account_id == account_id)):
         delete_portfolio(db, pid, now)
     _mark(db, Account, Account.id == account_id, now=now)
 
 
-def delete_tag(db: Session, tag_id: uuid.UUID, now: datetime | None = None) -> None:
+def delete_milestone(db: Session, milestone_id: uuid.UUID, now: datetime | None = None) -> None:
     now = now or utcnow()
-    _mark(db, AccountTag, AccountTag.tag_id == tag_id, now=now)
-    _mark(db, PortfolioTag, PortfolioTag.tag_id == tag_id, now=now)
-    _mark(db, Tag, Tag.id == tag_id, now=now)
+    _mark(db, BucketTarget, BucketTarget.milestone_id == milestone_id, now=now)
+    _mark(db, Milestone, Milestone.id == milestone_id, now=now)
 
 
 def delete_workspace(db: Session, workspace_id: uuid.UUID, now: datetime | None = None) -> None:
@@ -69,4 +71,7 @@ def delete_workspace(db: Session, workspace_id: uuid.UUID, now: datetime | None 
         delete_portfolio(db, pid, now)
     for (aid,) in db.execute(select(Account.id).where(Account.workspace_id == workspace_id)):
         delete_account(db, aid, now)
+    _mark(db, BucketTarget, BucketTarget.workspace_id == workspace_id, now=now)
+    _mark(db, Milestone, Milestone.workspace_id == workspace_id, now=now)
+    _mark(db, WealthInquiry, WealthInquiry.workspace_id == workspace_id, now=now)
     _mark(db, Workspace, Workspace.id == workspace_id, now=now)

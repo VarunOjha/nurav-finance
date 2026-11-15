@@ -1,23 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { X } from 'lucide-react'
 import { apiErrorMessage } from '../api/client'
 import { HoldingsCsvModal } from '../components/HoldingsCsvModal'
 import { ScreenshotImportModal, type ImportedHolding } from '../components/ScreenshotImportModal'
-import { clearScreenshots, peekScreenshots } from '../lib/pendingScreenshots'
+import { clearScreenshots, draftKey, peekScreenshots } from '../lib/pendingScreenshots'
 import { AmountInput } from '../components/ui/AmountInput'
 import { Button } from '../components/ui/Button'
 import { BankLogo } from '../components/BankLogo'
 import { FormError, TextArea } from '../components/ui/Field'
 import { DateField } from '../components/ui/DateField'
 import { Chip, ErrorBox, Loading, Page, PageHeader, Table, onlyBelow, showFrom, stacked, td, th } from '../components/ui/Primitives'
-import { usePortfolio, usePortfolioMutations, useSnapshotPrefill } from '../hooks/queries'
+import { useAccount, usePortfolio, usePortfolioMutations, useSnapshotPrefill } from '../hooks/queries'
 import { trimDecimal } from '../lib/amount'
 import { blankRow, newRowKey, num, rowsToHoldings, type HoldingRow } from '../lib/holdingRows'
 import { cn } from '../lib/cn'
 import type { CsvHolding } from '../lib/holdingsCsv'
 import { ASSET_CLASS_LABELS, arrow, deltaClass, formatDate, money, quantity, signedMoney, todayISO, toNumber } from '../lib/format'
-import type { AssetClass, Holding } from '../types/api'
+import type { AssetClass, Holding, SnapshotPrefill } from '../types/api'
 
 // Every field is editable, so on narrow screens each row becomes a card instead of dropping columns.
 const stack = stacked('lg')
@@ -39,13 +39,23 @@ const fromHolding = (h: Holding): Row => ({
 
 const fromImport = (h: CsvHolding | ImportedHolding): Row => ({ key: newRowKey(), symbol: h.symbol, name: h.name ?? '', asset_class: h.asset_class, quantity: h.quantity, buy_price: h.buy_price ?? '', current_price: h.current_price })
 
-// Record a snapshot. Rows start from the latest snapshot dated before "as of"
+// A new portfolio has nothing to start from.
+const NO_BASE: SnapshotPrefill = { based_on: null, holdings: [] }
+
+// Record holdings: a new snapshot. Rows start from the latest snapshot dated before "as of"
 // (backdating-aware); value, change and new/sold/changed are computed live.
+//
+// At /accounts/:accountId/portfolio/new it records a NEW portfolio's first
+// holdings: the portfolio (details from the query string, else the account)
+// is created together with them on save — leaving the page creates nothing.
 export default function SnapshotPage() {
-  const { portfolioId = '' } = useParams()
+  const { portfolioId = '', accountId = '' } = useParams()
+  const draft = !!accountId
+  const [search] = useSearchParams()
   const navigate = useNavigate()
   const portfolio = usePortfolio(portfolioId)
-  const { createSnapshot } = usePortfolioMutations()
+  const account = useAccount(accountId)
+  const { create, createSnapshot } = usePortfolioMutations()
 
   const [asOf, setAsOf] = useState(todayISO())
   const prefill = useSnapshotPrefill(portfolioId, asOf)
@@ -56,12 +66,13 @@ export default function SnapshotPage() {
   const [error, setError] = useState<string | null>(null)
   const [csvOpen, setCsvOpen] = useState(false)
   // Coming from Add portfolio → From screenshots: open the import with those images.
-  const [handedOver] = useState(() => peekScreenshots(portfolioId))
+  const shotsKey = draft ? draftKey(accountId) : portfolioId
+  const [handedOver] = useState(() => peekScreenshots(shotsKey))
   const [shotsOpen, setShotsOpen] = useState(() => !!handedOver)
-  useEffect(() => clearScreenshots(portfolioId), [portfolioId])
+  useEffect(() => clearScreenshots(shotsKey), [shotsKey])
   const lastPrefill = useRef<typeof prefill.data>()
 
-  const base = prefill.data
+  const base = draft ? NO_BASE : prefill.data
   const baseKey = base ? (base.based_on?.id ?? null) : undefined
 
   const seed = () => {
@@ -110,23 +121,37 @@ export default function SnapshotPage() {
     sold: sold.length,
   }
 
-  if (portfolio.isLoading) {
+  const source = draft ? account : portfolio
+  if (source.isLoading) {
     return (
       <Page>
         <Loading />
       </Page>
     )
   }
-  if (portfolio.error || !portfolio.data) {
+  if (source.error || !source.data) {
     return (
       <Page>
-        <ErrorBox message={apiErrorMessage(portfolio.error, 'Portfolio not found in this workspace')} />
+        <ErrorBox message={apiErrorMessage(source.error, draft ? 'Account not found in this workspace' : 'Portfolio not found in this workspace')} />
       </Page>
     )
   }
-  const p = portfolio.data
+  // One portfolio per account: if it exists already, record on it instead.
+  const taken = draft ? account.data?.portfolios[0] : undefined
+  if (taken) return <Navigate to={`/portfolios/${taken.id}/snapshots/new`} replace />
+
+  const a = account.data
+  const p = draft
+    ? {
+        id: null,
+        name: search.get('name') || a?.institution?.trim() || a?.name || 'Portfolio',
+        provider: search.get('provider') ?? a?.institution ?? null,
+        currency: search.get('currency') || a?.currency || 'USD',
+      }
+    : portfolio.data!
   const cur = p.currency
   const today = todayISO()
+  const back = draft ? `/accounts/${accountId}` : `/portfolios/${p.id}`
 
   const save = async () => {
     setError(null)
@@ -134,12 +159,24 @@ export default function SnapshotPage() {
     if (asOf > today) return setError('The date cannot be in the future')
     const checked = rowsToHoldings(rows)
     if ('error' in checked) return setError(checked.error)
-    const { holdings } = checked
+    const snapshot = { as_of: asOf, note: note.trim() || null, holdings: checked.holdings }
     try {
-      await createSnapshot.mutateAsync({ id: p.id, as_of: asOf, note: note.trim() || null, holdings })
-      navigate(`/portfolios/${p.id}`)
+      if (p.id === null) {
+        // The portfolio and its first holdings are saved together.
+        const created = await create.mutateAsync({
+          name: p.name,
+          provider: p.provider,
+          currency: cur,
+          account_id: accountId,
+          snapshot,
+        })
+        navigate(`/portfolios/${created.id}`)
+      } else {
+        await createSnapshot.mutateAsync({ id: p.id, ...snapshot })
+        navigate(`/portfolios/${p.id}`)
+      }
     } catch (err) {
-      setError(apiErrorMessage(err, 'Could not save the snapshot'))
+      setError(apiErrorMessage(err, draft ? 'Could not save the portfolio' : 'Could not save the snapshot'))
     }
   }
 
@@ -154,10 +191,14 @@ export default function SnapshotPage() {
         title={
           <span className="flex items-center gap-3">
             <BankLogo institution={p.provider} size="lg" />
-            Record snapshot · {p.name}
+            {draft ? 'Add portfolio' : 'Record holdings'} · {p.name}
           </span>
         }
-        subtitle="Snapshots are immutable — to fix one, delete it and record it again. Backdated snapshots slot in by date."
+        subtitle={
+          draft
+            ? `${a?.name ?? 'The account'}'s portfolio is created when you save its first holdings — leave this page and nothing is added.`
+            : 'Snapshots are immutable — to fix one, delete it and record it again. Backdated snapshots slot in by date.'
+        }
       />
 
       <div className="flex flex-wrap items-end gap-6">
@@ -169,6 +210,8 @@ export default function SnapshotPage() {
             <span>
               Starting from the <span className="text-ink">{formatDate(base.based_on.as_of)}</span> snapshot — edit quantities and current prices
             </span>
+          ) : draft ? (
+            <span>First holdings of the new portfolio</span>
           ) : base ? (
             <span>First snapshot before this date — add holdings</span>
           ) : null}
@@ -342,11 +385,11 @@ export default function SnapshotPage() {
       <TextArea id="snap-note" label="Note · optional" value={note} onChange={(e) => setNote(e.target.value)} className="max-w-2xl" />
       <FormError message={error} />
       <div className="flex justify-end gap-5 border-t border-line pt-5">
-        <Button variant="ghost" onClick={() => navigate(`/portfolios/${p.id}`)}>
+        <Button variant="ghost" onClick={() => navigate(back)}>
           Cancel
         </Button>
-        <Button onClick={save} isLoading={createSnapshot.isPending}>
-          Save snapshot
+        <Button onClick={save} isLoading={createSnapshot.isPending || create.isPending}>
+          {draft ? 'Save portfolio & holdings' : 'Save snapshot'}
         </Button>
       </div>
 

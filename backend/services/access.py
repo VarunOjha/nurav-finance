@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from models import Account, Portfolio, Snapshot, Tag, Workspace
+from models import Account, Portfolio, Snapshot, Workspace
 
 
 def get_account(db: Session, workspace: Workspace, account_id: uuid.UUID) -> Account:
@@ -28,14 +28,3 @@ def get_snapshot(db: Session, portfolio: Portfolio, snapshot_id: uuid.UUID) -> S
     if snapshot is None:
         raise HTTPException(status_code=404, detail="Snapshot not found")
     return snapshot
-
-
-def owned_tags(db: Session, workspace: Workspace, tag_ids: list[uuid.UUID]) -> list[Tag]:
-    """Resolve tag ids to the user's live tags; unknown ids are a 422."""
-    unique = list(dict.fromkeys(tag_ids))
-    if not unique:
-        return []
-    tags = db.scalars(select(Tag).where(Tag.id.in_(unique), Tag.user_id == workspace.user_id)).all()
-    if len(tags) != len(unique):
-        raise HTTPException(status_code=422, detail="Unknown tag")
-    return list(tags)

@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { PortfolioFormModal } from './PortfolioFormModal'
 import { findBank, LOGO_FILES } from '../lib/banks'
-import { peekScreenshots } from '../lib/pendingScreenshots'
+import { draftKey, peekScreenshots } from '../lib/pendingScreenshots'
 
 const createPortfolio = vi.fn(async (body: unknown) => ({ id: 'p1', ...(body as object) }))
 const createSnapshot = vi.fn(async (_v: unknown) => ({ id: 'snap1' }))
@@ -14,14 +14,15 @@ vi.mock('../hooks/queries', () => ({
       { id: 'a1', name: 'Wealthfront Cash', institution: 'Wealthfront', currency: 'USD', status: 'active', account_type: 'brokerage' },
       { id: 'a2', name: 'Robinhood Brokerage', institution: 'Robinhood', currency: 'USD', status: 'active', account_type: 'brokerage' },
       { id: 's1', name: 'Chase Savings', institution: 'Chase', currency: 'USD', status: 'active', account_type: 'savings' },
+      { id: 'a3', name: 'Zerodha Brokerage', institution: 'Zerodha', currency: 'INR', status: 'active', account_type: 'brokerage' },
     ],
   }),
+  // a3 already has its portfolio.
+  usePortfolios: () => ({ data: [{ id: 'z1', name: 'Zerodha', currency: 'INR', account: { id: 'a3', name: 'Zerodha Brokerage' } }] }),
   usePortfolioMutations: () => ({
     create: { mutateAsync: createPortfolio, isPending: false }, update: { mutateAsync: vi.fn(), isPending: false },
     createSnapshot: { mutateAsync: createSnapshot, isPending: false },
   }),
-  useTags: () => ({ data: [] }),
-  useTagMutations: () => ({ create: { mutateAsync: vi.fn(), isPending: false } }),
 }))
 
 describe('PortfolioFormModal', () => {
@@ -40,7 +41,7 @@ describe('PortfolioFormModal', () => {
     const account = screen.getByLabelText('Brokerage account')
     expect(within(account).queryByRole('option', { name: /Chase Savings/ })).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Save portfolio' }))
+    await user.click(screen.getByRole('button', { name: 'Continue to holdings' }))
     expect(screen.getByText('Choose the brokerage account it belongs to')).toBeInTheDocument()
     expect(createPortfolio).not.toHaveBeenCalled()
 
@@ -49,27 +50,31 @@ describe('PortfolioFormModal', () => {
     expect(screen.getByLabelText('Currency')).toHaveValue('USD')
     expect(screen.getByRole('button', { name: /Provider/ })).toHaveTextContent('Robinhood')
 
-    await user.click(screen.getByRole('button', { name: /More details/ }))
-    expect(screen.getByLabelText('Notes')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /More details/ })).not.toBeInTheDocument() // no dates or notes any more
 
-    await user.click(screen.getByRole('button', { name: 'Save portfolio' }))
-    expect(createPortfolio).toHaveBeenCalledWith(expect.objectContaining({ name: 'Robinhood', provider: 'Robinhood', currency: 'USD', account_id: 'a2' }))
+    await user.click(screen.getByRole('button', { name: 'Continue to holdings' }))
+    // Nothing is created until its first holdings are saved on the next page.
+    expect(createPortfolio).not.toHaveBeenCalled()
   })
 
   it("adding from an account's page prefills provider, name, currency and the link", async () => {
     const user = userEvent.setup()
     createPortfolio.mockClear()
-    render(<PortfolioFormModal open onOpenChange={() => {}} forAccount={{ id: 'a1', name: 'Wealthfront Cash', institution: 'Wealthfront', currency: 'USD' }} />)
+    const onSaved = vi.fn()
+    render(
+      <PortfolioFormModal open onOpenChange={() => {}} onSaved={onSaved} forAccount={{ id: 'a1', name: 'Wealthfront Cash', institution: 'Wealthfront', currency: 'USD' }} />,
+    )
 
     expect(screen.getByLabelText('Name')).toHaveValue('Wealthfront')
     expect(screen.getByLabelText('Currency')).toHaveValue('USD')
     expect(screen.getByLabelText('Brokerage account')).toHaveValue('a1')
 
-    await user.click(screen.getByRole('button', { name: 'Save portfolio' }))
-    expect(createPortfolio).toHaveBeenCalledWith(expect.objectContaining({ name: 'Wealthfront', provider: 'Wealthfront', currency: 'USD', account_id: 'a1' }))
+    await user.click(screen.getByRole('button', { name: 'Continue to holdings' }))
+    expect(createPortfolio).not.toHaveBeenCalled()
+    expect(onSaved).toHaveBeenCalledWith('/accounts/a1/portfolio/new?name=Wealthfront&provider=Wealthfront&currency=USD')
   })
 
-  it('From screenshots tab: needs an image, then hands the images to the new portfolio', async () => {
+  it('From screenshots tab: needs an image, then hands the images to the new-portfolio page (nothing created yet)', async () => {
     const user = userEvent.setup({ applyAccept: false })
     URL.createObjectURL = vi.fn(() => 'blob:preview')
     URL.revokeObjectURL = vi.fn()
@@ -78,16 +83,16 @@ describe('PortfolioFormModal', () => {
 
     expect(screen.getByRole('tab', { name: /Manual entry/ })).toHaveAttribute('aria-selected', 'true')
     await user.click(screen.getByRole('tab', { name: /From screenshots/ }))
-    await user.click(screen.getByRole('button', { name: 'Save portfolio' }))
+    await user.click(screen.getByRole('button', { name: 'Continue to holdings' }))
     expect(screen.getByText(/Add at least one screenshot/)).toBeInTheDocument()
     expect(createPortfolio).not.toHaveBeenCalled()
 
     const shot = new File(['png'], 'holdings.png', { type: 'image/png' })
     await user.upload(screen.getByTestId('portfolio-screenshot-input'), shot)
     expect(screen.getByAltText('Screenshot 1')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Save & read 1 screenshot' }))
-    expect(createPortfolio).toHaveBeenCalledTimes(1)
-    expect(peekScreenshots('p1')).toEqual([shot])
+    await user.click(screen.getByRole('button', { name: 'Continue & read 1 screenshot' }))
+    expect(createPortfolio).not.toHaveBeenCalled()
+    expect(peekScreenshots(draftKey('a1'))).toEqual([shot])
   })
   it('Manual entry: holdings typed in the modal are saved as the first snapshot', async () => {
     const user = userEvent.setup()
@@ -111,16 +116,47 @@ describe('PortfolioFormModal', () => {
     expect(screen.getByText('$2,600.00')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Save portfolio & 2 holdings' }))
-    expect(createPortfolio).toHaveBeenCalledTimes(1)
-    expect(createSnapshot).toHaveBeenCalledWith(
+    // One request: the portfolio and its first snapshot together.
+    expect(createPortfolio).toHaveBeenCalledWith(
       expect.objectContaining({
-        id: 'p1',
-        holdings: [
-          expect.objectContaining({ symbol: 'AAPL', quantity: '10', buy_price: null, current_price: '200' }),
-          expect.objectContaining({ symbol: 'VTI', quantity: '2', buy_price: '250', current_price: '300' }),
-        ],
+        account_id: 'a2',
+        snapshot: expect.objectContaining({
+          holdings: [
+            expect.objectContaining({ symbol: 'AAPL', quantity: '10', buy_price: null, current_price: '200' }),
+            expect.objectContaining({ symbol: 'VTI', quantity: '2', buy_price: '250', current_price: '300' }),
+          ],
+        }),
       }),
     )
-    expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1' }), { recorded: true })
+    expect(createSnapshot).not.toHaveBeenCalled()
+    expect(onSaved).toHaveBeenCalledWith('/portfolios/p1')
+  })
+
+  it('an account that already has its portfolio gets the holdings as a new snapshot, never a second portfolio', async () => {
+    const user = userEvent.setup()
+    createPortfolio.mockClear()
+    createSnapshot.mockClear()
+    const onSaved = vi.fn()
+    render(<PortfolioFormModal open onOpenChange={() => {}} onSaved={onSaved} />)
+
+    const account = screen.getByLabelText('Brokerage account')
+    expect(within(account).getByRole('option', { name: /Zerodha Brokerage .* portfolio: Zerodha/ })).toBeInTheDocument()
+    await user.selectOptions(account, 'a3')
+    expect(screen.getByRole('dialog', { name: /Record holdings · Zerodha/ })).toBeInTheDocument()
+    expect(screen.getByRole('note')).toHaveTextContent('already has its portfolio “Zerodha”')
+    expect(screen.queryByLabelText('Name')).not.toBeInTheDocument()
+
+    // Without holdings typed: straight to its Record holdings page.
+    await user.click(screen.getByRole('button', { name: 'Record holdings' }))
+    expect(onSaved).toHaveBeenLastCalledWith('/portfolios/z1/snapshots/new')
+
+    // Typed holdings: saved on the existing portfolio.
+    await user.type(screen.getByLabelText('Symbol, row 1'), 'infy')
+    await user.type(screen.getByLabelText('Quantity, row 1'), '10')
+    await user.type(screen.getByLabelText('Current price, row 1'), '1500')
+    await user.click(screen.getByRole('button', { name: 'Save 1 holding' }))
+    expect(createSnapshot).toHaveBeenCalledWith(expect.objectContaining({ id: 'z1', holdings: [expect.objectContaining({ symbol: 'INFY' })] }))
+    expect(createPortfolio).not.toHaveBeenCalled()
+    expect(onSaved).toHaveBeenLastCalledWith('/portfolios/z1')
   })
 })

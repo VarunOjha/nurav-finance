@@ -8,7 +8,7 @@ import { FormError, Input, PasswordInput, Select } from '../components/ui/Field'
 import { Tabs } from '../components/ui/Primitives'
 import { useAuth } from '../context/AuthContext'
 import { GENDER_LABELS, todayISO } from '../lib/format'
-import { birthDateError, EARLIEST_BIRTH_DATE, emailError, phoneError } from '../lib/validate'
+import { birthDateError, EARLIEST_BIRTH_DATE, emailError } from '../lib/validate'
 
 type Mode = 'signin' | 'register'
 
@@ -72,7 +72,7 @@ function useAfterAuth() {
   const navigate = useNavigate()
   const location = useLocation()
   const from = (location.state as { from?: string } | null)?.from
-  return () => navigate(from && from !== '/login' ? from : '/accounts', { replace: true })
+  return () => navigate(from && from !== '/login' ? from : '/dashboard', { replace: true })
 }
 
 function SignInForm() {
@@ -141,7 +141,6 @@ function RegisterForm() {
     date_of_birth: '',
     gender: '',
     email: '',
-    phone: '',
     password: '',
     confirm: '',
   })
@@ -157,7 +156,6 @@ function RegisterForm() {
   const mismatch = form.confirm.length > 0 && form.confirm !== form.password
   const problems = {
     email: emailError(form.email),
-    phone: phoneError(form.phone),
     date_of_birth: birthDateError(form.date_of_birth, today),
   }
   const show = (key: keyof typeof problems) => (touched[key] ? problems[key] : null)
@@ -165,7 +163,6 @@ function RegisterForm() {
     form.first_name.trim() &&
     form.last_name.trim() &&
     !problems.email &&
-    !problems.phone &&
     !problems.date_of_birth &&
     form.password.length >= MIN_PASSWORD &&
     !mismatch &&
@@ -173,7 +170,7 @@ function RegisterForm() {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
-    setTouched({ email: true, phone: true, date_of_birth: true })
+    setTouched({ email: true, date_of_birth: true })
     if (!ready) return
     setError(null)
     setBusy(true)
@@ -184,7 +181,6 @@ function RegisterForm() {
         date_of_birth: form.date_of_birth || null,
         gender: form.gender || null,
         email: form.email.trim(),
-        phone: form.phone.trim() || null,
         password: form.password,
       })
       done()
@@ -232,18 +228,6 @@ function RegisterForm() {
         error={show('email')}
         required
       />
-      <Input
-        id="reg-phone"
-        label="Phone · optional"
-        type="tel"
-        autoComplete="tel"
-        placeholder="+1 415 555 0123"
-        value={form.phone}
-        onChange={set('phone')}
-        onBlur={blur('phone')}
-        error={show('phone')}
-        hint="Include the country code, e.g. +91 or +1"
-      />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
         <PasswordInput
           id="reg-password"
@@ -267,7 +251,7 @@ function RegisterForm() {
       </div>
       <FormError message={error} />
       <div className="flex items-center justify-between gap-4">
-        <p className="font-mono text-[10px] text-ink-faint">Creates your Personal workspace and default tags.</p>
+        <p className="font-mono text-[10px] text-ink-faint">Creates your Personal workspace and starter buckets.</p>
         <Button type="submit" isLoading={busy} disabled={!form.first_name.trim() || !form.last_name.trim() || !form.email.trim() || !form.password || !form.confirm}>
           Create account
         </Button>

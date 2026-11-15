@@ -1,3 +1,4 @@
+import uuid
 from datetime import date
 from decimal import Decimal
 from typing import Literal
@@ -23,14 +24,41 @@ class CurrencySeries(BaseModel):
     portfolio_count: int
 
 
-class TagCurrencySeries(BaseModel):
-    currency: str
+class BucketInfo(BaseModel):
+    id: uuid.UUID
+    name: str
+    color: int
+    archived: bool
+
+
+class BucketSource(BaseModel):
+    account_id: uuid.UUID
+    name: str
+    percent: Decimal
+    value: Decimal
+
+
+class BucketRow(BaseModel):
+    bucket_id: uuid.UUID | None  # None = Unassigned
     values: Series
+    current: Decimal | None
+    share: Decimal  # of the currency's total today
+    change_1m: Decimal | None
+    pace_3m: Decimal | None  # average change per month
+    pace_6m: Decimal | None
+    pace_12m: Decimal | None
+    growth_pct: Decimal | None  # first value in range -> today
+    sources: list[BucketSource]
 
 
-class TagTrend(BaseModel):
-    tag: str
-    currencies: list[TagCurrencySeries]
+class CurrencyBuckets(BaseModel):
+    currency: str
+    rows: list[BucketRow]
+
+
+class BucketOverview(BaseModel):
+    buckets: list[BucketInfo]  # every bucket of the user, for names/colours
+    currencies: list[CurrencyBuckets]
 
 
 class CurrencyAllocation(BaseModel):
@@ -41,7 +69,6 @@ class CurrencyAllocation(BaseModel):
 class Allocation(BaseModel):
     by_type: list[CurrencyAllocation]
     by_asset_class: list[CurrencyAllocation]
-    by_tag: list[CurrencyAllocation]
 
 
 class TopAsset(BaseModel):
@@ -68,7 +95,7 @@ class TimelineEvent(BaseModel):
 class Overview(BaseModel):
     months: list[str]
     currencies: list[CurrencySeries]
-    tags: list[TagTrend]
+    buckets: BucketOverview
     allocation: Allocation
     top_assets: list[CurrencyTopAssets]
     timeline: list[TimelineEvent]

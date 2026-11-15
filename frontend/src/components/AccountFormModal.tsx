@@ -1,7 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { ChevronDown, ChevronRight, Plus, X } from 'lucide-react'
 import { apiErrorMessage } from '../api/client'
-import { useAuth } from '../context/AuthContext'
 import { useWorkspace } from '../context/WorkspaceContext'
 import { useAccountMutations } from '../hooks/queries'
 import { parseAmount } from '../lib/amount'
@@ -10,14 +9,12 @@ import { cn } from '../lib/cn'
 import { ACCOUNT_TYPE_LABELS, COUNTRIES, CURRENCIES, todayISO } from '../lib/format'
 import type { AccountDetail, AccountInput, AccountType } from '../types/api'
 import { BankPicker } from './BankPicker'
-import { TagPicker } from './TagPicker'
 import { AmountField } from './ui/AmountInput'
 import { Button } from './ui/Button'
-import { FormError, Input, Label, PasswordInput, SectionTitle, Select, TextArea } from './ui/Field'
+import { FormError, Input, Label, SectionTitle, Select } from './ui/Field'
 import { DateField } from './ui/DateField'
 import { Modal } from './ui/Modal'
 
-const QUICK_IDENTIFIERS = ['IFSC', 'Routing no.', 'SWIFT', 'IBAN', 'Bank code', 'Branch', 'MICR']
 const ACCOUNT_TYPES = Object.keys(ACCOUNT_TYPE_LABELS) as AccountType[]
 const DECIMAL = /^-?\d+(\.\d{1,4})?$/
 
@@ -31,49 +28,31 @@ interface FormState {
   name: string
   name_touched: boolean
   institution: string
-  account_number: string
-  clear_number: boolean
-  holder_name: string
   account_type: AccountType
-  opened_on: string
-  closed_on: string
   country: string
   country_other: string
-  city: string
   currency: string
-  notes: string
   opening_amount: string
   opening_as_of: string
-  identifiers: Row[]
   links: Row[]
-  tag_ids: string[]
 }
 
 let seq = 0
 const row = (label = '', value = ''): Row => ({ key: ++seq, label, value })
 
-function initial(account: AccountDetail | undefined, holder: string): FormState {
+function initial(account: AccountDetail | undefined): FormState {
   const knownCountry = !account?.country || COUNTRIES.some((c) => c.code === account.country)
   return {
     name: account?.name ?? '',
     name_touched: !!account,
     institution: account?.institution ?? '',
-    account_number: '',
-    clear_number: false,
-    holder_name: account ? (account.holder_name ?? '') : holder,
     account_type: account?.account_type ?? 'savings',
-    opened_on: account?.opened_on ?? '',
-    closed_on: account?.closed_on ?? '',
     country: knownCountry ? (account?.country ?? '') : 'OTHER',
     country_other: knownCountry ? '' : (account?.country ?? ''),
-    city: account?.city ?? '',
     currency: account?.currency ?? 'USD',
-    notes: account?.notes ?? '',
     opening_amount: '',
     opening_as_of: todayISO(),
-    identifiers: account ? account.identifiers.map((i) => row(i.label, i.value)) : [],
     links: account ? account.links.map((l) => row(l.label, l.url)) : [],
-    tag_ids: account ? account.tags.map((t) => t.id) : [],
   }
 }
 
@@ -87,34 +66,32 @@ interface Props {
   onSaved?: (account: AccountDetail) => void
 }
 
-// Add / edit an account. The basics come first; everything else sits under
-// "More details" (folded when adding, open when editing). Lists (identifiers,
-// links, tags) replace on save.
+// Add / edit an account: only what a planner needs (bank, name, type, currency,
+// country, balance). Links sit under "More details". No account numbers or
+// personal details are kept. Closing happens on the account's page.
 export function AccountFormModal({ open, onOpenChange, account, onSaved }: Props) {
   const { workspace } = useWorkspace()
-  const { user } = useAuth()
   const { create, update } = useAccountMutations()
-  const holder = user ? `${user.first_name} ${user.last_name}`.trim() : ''
-  const [form, setForm] = useState<FormState>(() => initial(account, holder))
-  const [more, setMore] = useState(!!account)
+  const [form, setForm] = useState<FormState>(() => initial(account))
+  const [more, setMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const editing = !!account
 
   useEffect(() => {
     if (open) {
-      setForm(initial(account, holder))
-      setMore(!!account)
+      setForm(initial(account))
+      setMore(!!account?.links.length)
       setError(null)
     }
-  }, [open, account, holder])
+  }, [open, account])
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((f) => ({ ...f, [key]: value }))
   const bind = (key: keyof FormState) => (e: { target: { value: string } }) => set(key, e.target.value as never)
 
-  const updateRow = (list: 'identifiers' | 'links', key: number, field: 'label' | 'value', value: string) =>
-    setForm((f) => ({ ...f, [list]: f[list].map((r) => (r.key === key ? { ...r, [field]: value } : r)) }))
-  const removeRow = (list: 'identifiers' | 'links', key: number) => setForm((f) => ({ ...f, [list]: f[list].filter((r) => r.key !== key) }))
-  const addRow = (list: 'identifiers' | 'links', label = '') => setForm((f) => ({ ...f, [list]: [...f[list], row(label)] }))
+  const updateRow = (key: number, field: 'label' | 'value', value: string) =>
+    setForm((f) => ({ ...f, links: f.links.map((r) => (r.key === key ? { ...r, [field]: value } : r)) }))
+  const removeRow = (key: number) => setForm((f) => ({ ...f, links: f.links.filter((r) => r.key !== key) }))
+  const addRow = () => setForm((f) => ({ ...f, links: [...f.links, row()] }))
 
   const currencyLocked = editing && account.balance !== null
   const openingAmount = parseAmount(form.opening_amount)
@@ -123,6 +100,7 @@ export function AccountFormModal({ open, onOpenChange, account, onSaved }: Props
   const countryInvalid = form.country === 'OTHER' && country !== '' && !/^[A-Z]{2}$/.test(country)
   const busy = create.isPending || update.isPending
   const currencies = CURRENCIES.includes(form.currency) ? CURRENCIES : [form.currency, ...CURRENCIES]
+  const linkCount = form.links.filter((r) => r.label.trim() && r.value.trim()).length
 
   // Picking a known bank fills in its country and currency, and suggests a name until one is typed.
   const pickBank = (institution: string, bank: Bank | null) =>
@@ -141,40 +119,21 @@ export function AccountFormModal({ open, onOpenChange, account, onSaved }: Props
   const pickCountry = (code: string) =>
     setForm((f) => ({ ...f, country: code, currency: !currencyLocked && !editing && COUNTRY_CURRENCY[code] ? COUNTRY_CURRENCY[code] : f.currency }))
 
-  const filled = [
-    editing ? account.has_account_number : !!form.account_number.trim(),
-    form.identifiers.some((r) => r.label.trim() && r.value.trim()),
-    form.links.some((r) => r.label.trim() && r.value.trim()),
-    !!(form.opened_on || form.city.trim()),
-    !!(form.tag_ids.length || form.notes.trim()),
-  ].filter(Boolean).length
-
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     setError(null)
     if (!form.name.trim()) return setError('Account name is required')
     if (openingInvalid) return setError('Balance must be a number')
-    if (countryInvalid) {
-      setMore(true)
-      return setError('Country must be a 2-letter code')
-    }
+    if (countryInvalid) return setError('Country must be a 2-letter code')
 
-    const identifiers = form.identifiers.filter((r) => r.label.trim() && r.value.trim()).map((r) => ({ label: r.label.trim(), value: r.value.trim() }))
     const links = form.links.filter((r) => r.label.trim() && r.value.trim()).map((r) => ({ label: r.label.trim(), url: r.value.trim() }))
     const base = {
       name: form.name.trim(),
       institution: orNull(form.institution),
       account_type: form.account_type,
-      holder_name: orNull(form.holder_name),
-      opened_on: form.opened_on || null,
-      closed_on: form.closed_on || null,
       country: country || null,
-      city: orNull(form.city),
       currency: form.currency,
-      notes: orNull(form.notes),
-      identifiers,
       links,
-      tag_ids: form.tag_ids,
     }
 
     try {
@@ -182,13 +141,10 @@ export function AccountFormModal({ open, onOpenChange, account, onSaved }: Props
       if (editing) {
         const body: Partial<AccountInput> = { ...base }
         if (currencyLocked) delete body.currency
-        if (form.clear_number) body.account_number = ''
-        else if (form.account_number.trim()) body.account_number = form.account_number.trim()
         saved = await update.mutateAsync({ id: account.id, body })
       } else {
         const body: AccountInput = {
           ...base,
-          account_number: orNull(form.account_number),
           opening_balance: openingAmount ? { amount: openingAmount, as_of: form.opening_as_of || todayISO() } : null,
         }
         saved = await create.mutateAsync(body)
@@ -208,7 +164,7 @@ export function AccountFormModal({ open, onOpenChange, account, onSaved }: Props
       title={editing ? `Edit account · ${account.name}` : 'Add account'}
       subtitle={
         <>
-          Workspace <span className="text-ink">{workspace?.name}</span> · {editing ? 'balances are only ever appended' : 'the basics now, details whenever you like'}
+          Workspace <span className="text-ink">{workspace?.name}</span>
         </>
       }
       footer={
@@ -230,16 +186,13 @@ export function AccountFormModal({ open, onOpenChange, account, onSaved }: Props
       <form id="account-form" onSubmit={submit} noValidate className="px-5 sm:px-7 py-6 flex flex-col gap-6">
         <BankPicker id="a-bank" value={form.institution} country={country || undefined} onChange={pickBank} />
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
-          <Input
-            id="a-name"
-            label="Account name"
-            value={form.name}
-            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value, name_touched: e.target.value.trim() !== '' }))}
-            required
-          />
-          <Input id="a-holder" label="Account holder" value={form.holder_name} onChange={bind('holder_name')} />
-        </div>
+        <Input
+          id="a-name"
+          label="Account name"
+          value={form.name}
+          onChange={(e) => setForm((f) => ({ ...f, name: e.target.value, name_touched: e.target.value.trim() !== '' }))}
+          required
+        />
 
         <div>
           <Label>Type</Label>
@@ -332,87 +285,23 @@ export function AccountFormModal({ open, onOpenChange, account, onSaved }: Props
             {more ? <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" /> : <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />}
             More details · optional
             <span className="ml-auto normal-case tracking-normal text-[10px] text-ink-muted">
-              {filled ? `${filled} of 5 filled` : 'number · identifiers · links · dates · tags'}
+              {linkCount ? `${linkCount} link${linkCount === 1 ? '' : 's'}` : editing ? 'links' : 'balance date · links'}
             </span>
           </button>
 
           {more && (
             <div id="account-more" className="flex flex-col gap-8 pt-3">
-              <section className="flex flex-col gap-4">
-                <SectionTitle>Account</SectionTitle>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
-                  <div>
-                    <PasswordInput
-                      id="a-num"
-                      label="Account number · encrypted"
-                      autoComplete="off"
-                      value={form.account_number}
-                      disabled={form.clear_number}
-                      onChange={bind('account_number')}
-                      hint={editing && account.account_number_masked ? `Leave blank to keep ${account.account_number_masked}` : undefined}
-                    />
-                    {editing && account.has_account_number && (
-                      <label className="mt-1.5 inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-ink-muted cursor-pointer">
-                        <input type="checkbox" checked={form.clear_number} onChange={(e) => set('clear_number', e.target.checked)} />
-                        Clear stored number
-                      </label>
-                    )}
-                  </div>
-                  <Input id="a-city" label="City / branch" value={form.city} onChange={bind('city')} />
-                  <DateField id="a-open" label="Opened on" value={form.opened_on} onChange={bind('opened_on')} />
-                  <DateField id="a-close" label="Closed on" value={form.closed_on} onChange={bind('closed_on')} hint="Leave empty while active" />
-                  {!editing && (
-                    <DateField id="a-asof" label="Balance as of" max={todayISO()} value={form.opening_as_of} onChange={bind('opening_as_of')} hint="Defaults to today" />
-                  )}
-                </div>
-              </section>
-
-              <section className="flex flex-col gap-3">
-                <SectionTitle>Identifiers</SectionTitle>
-                {form.identifiers.map((r) => (
-                  <div key={r.key} className="flex items-end gap-4">
-                    <Input
-                      id={`idk-${r.key}`}
-                      label="Label"
-                      className="flex-1 min-w-0"
-                      value={r.label}
-                      onChange={(e) => updateRow('identifiers', r.key, 'label', e.target.value)}
-                    />
-                    <Input
-                      id={`idv-${r.key}`}
-                      label="Value"
-                      className="flex-[2] min-w-0"
-                      value={r.value}
-                      onChange={(e) => updateRow('identifiers', r.key, 'value', e.target.value)}
-                    />
-                    <button
-                      type="button"
-                      aria-label="Remove identifier"
-                      onClick={() => removeRow('identifiers', r.key)}
-                      className="text-ink-muted hover:text-ink p-2 min-h-10"
-                    >
-                      <X className="w-3.5 h-3.5" aria-hidden="true" />
-                    </button>
-                  </div>
-                ))}
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button variant="ghost" onClick={() => addRow('identifiers')}>
-                    <Plus className="w-3.5 h-3.5" aria-hidden="true" /> Add identifier
-                  </Button>
-                  <span className="font-mono text-[10px] text-ink-faint mx-1">quick add</span>
-                  {QUICK_IDENTIFIERS.map((label) => (
-                    <button
-                      key={label}
-                      type="button"
-                      onClick={() => addRow('identifiers', label)}
-                      className="font-mono text-[10px] uppercase tracking-wide border border-dashed border-line px-2 py-1 min-h-7 text-ink-muted hover:text-ink hover:border-ink"
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </section>
-
+              {!editing && (
+                <DateField
+                  id="a-asof"
+                  label="Balance as of"
+                  className="sm:max-w-xs"
+                  max={todayISO()}
+                  value={form.opening_as_of}
+                  onChange={bind('opening_as_of')}
+                  hint="Defaults to today"
+                />
+              )}
               <section className="flex flex-col gap-3">
                 <SectionTitle>Links</SectionTitle>
                 {form.links.map((r) => (
@@ -423,7 +312,7 @@ export function AccountFormModal({ open, onOpenChange, account, onSaved }: Props
                       placeholder="Net banking"
                       className="flex-1 min-w-0"
                       value={r.label}
-                      onChange={(e) => updateRow('links', r.key, 'label', e.target.value)}
+                      onChange={(e) => updateRow(r.key, 'label', e.target.value)}
                     />
                     <Input
                       id={`lv-${r.key}`}
@@ -432,22 +321,16 @@ export function AccountFormModal({ open, onOpenChange, account, onSaved }: Props
                       placeholder="https://"
                       className="flex-[2] min-w-0"
                       value={r.value}
-                      onChange={(e) => updateRow('links', r.key, 'value', e.target.value)}
+                      onChange={(e) => updateRow(r.key, 'value', e.target.value)}
                     />
-                    <button type="button" aria-label="Remove link" onClick={() => removeRow('links', r.key)} className="text-ink-muted hover:text-ink p-2 min-h-10">
+                    <button type="button" aria-label="Remove link" onClick={() => removeRow(r.key)} className="text-ink-muted hover:text-ink p-2 min-h-10">
                       <X className="w-3.5 h-3.5" aria-hidden="true" />
                     </button>
                   </div>
                 ))}
-                <Button variant="ghost" className="self-start" onClick={() => addRow('links')}>
+                <Button variant="ghost" className="self-start" onClick={addRow}>
                   <Plus className="w-3.5 h-3.5" aria-hidden="true" /> Add link
                 </Button>
-              </section>
-
-              <section className="flex flex-col gap-3">
-                <SectionTitle>Tags &amp; notes</SectionTitle>
-                <TagPicker value={form.tag_ids} onChange={(ids) => set('tag_ids', ids)} />
-                <TextArea id="a-notes" label="Notes" value={form.notes} onChange={bind('notes')} />
               </section>
             </div>
           )}

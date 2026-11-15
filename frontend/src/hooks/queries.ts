@@ -2,15 +2,27 @@
 // switching workspaces swaps every cache entry at once. Mutations invalidate
 // (no optimistic updates), like Nurav Docs.
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { accountsApi, analyticsApi, portfoliosApi, tagsApi, workspacesApi } from '../api/endpoints'
+import {
+  accountsApi,
+  analyticsApi,
+  bucketsApi,
+  dashboardApi,
+  estimatorApi,
+  portfoliosApi,
+  splitsApi,
+  milestonesApi,
+  workspacesApi,
+  type BucketBody,
+} from '../api/endpoints'
 import { workspacesKey, useWorkspace } from '../context/WorkspaceContext'
-import type { AccountInput, AnalyticsRange, HoldingInput, PortfolioInput } from '../types/api'
+import type { AccountInput, AnalyticsRange, HoldingInput, PortfolioInput, MilestoneInput, SplitInput } from '../types/api'
 
 const keys = {
-  tags: ['tags'] as const,
+  buckets: ['buckets'] as const,
   accounts: (t: string | null) => ['t', t, 'accounts'] as const,
   account: (t: string | null, id: string) => ['t', t, 'accounts', id] as const,
   balances: (t: string | null, id: string) => ['t', t, 'accounts', id, 'balances'] as const,
+  splits: (t: string | null, id: string) => ['t', t, 'accounts', id, 'splits'] as const,
   portfolios: (t: string | null) => ['t', t, 'portfolios'] as const,
   consolidated: (t: string | null) => ['t', t, 'portfolios', 'consolidated'] as const,
   portfolio: (t: string | null, id: string) => ['t', t, 'portfolios', id] as const,
@@ -18,13 +30,19 @@ const keys = {
   snapshot: (t: string | null, id: string, sid: string, cmp: string | null) => ['t', t, 'portfolios', id, 'snapshots', sid, cmp] as const,
   prefill: (t: string | null, id: string, asOf: string) => ['t', t, 'portfolios', id, 'prefill', asOf] as const,
   analytics: (t: string | null, range: AnalyticsRange) => ['t', t, 'analytics', range] as const,
+  milestones: (t: string | null) => ['t', t, 'milestones'] as const,
+  metrics: (t: string | null) => ['t', t, 'metrics'] as const,
+  dashboard: (t: string | null) => ['t', t, 'dashboard'] as const,
+  pool: (t: string | null) => ['t', t, 'estimator', 'pool'] as const,
+  inquiries: (t: string | null) => ['t', t, 'estimator', 'inquiries'] as const,
+  inquiry: (t: string | null, id: string) => ['t', t, 'estimator', 'inquiries', id] as const,
 }
 
-/** Everything derived from a workspace's data, plus the counts shown on workspaces/tags. */
+/** Everything derived from a workspace's data, plus the usage shown on workspaces/buckets. */
 function invalidateWorkspaceData(qc: QueryClient, workspaceId: string | null) {
   qc.invalidateQueries({ queryKey: ['t', workspaceId] })
   qc.invalidateQueries({ queryKey: workspacesKey })
-  qc.invalidateQueries({ queryKey: keys.tags })
+  qc.invalidateQueries({ queryKey: keys.buckets })
 }
 
 function useScoped() {
@@ -32,23 +50,26 @@ function useScoped() {
   return { workspaceId, enabled: !!workspaceId }
 }
 
-// ── workspaces & tags (user-level) ──────────────────────────────────────────────
+// ── workspaces & buckets (user-level) ───────────────────────────────────────────
 
-export function useTags() {
-  return useQuery({ queryKey: keys.tags, queryFn: tagsApi.list })
+export function useBuckets() {
+  return useQuery({ queryKey: keys.buckets, queryFn: bucketsApi.list })
 }
 
-export function useTagMutations() {
+export function useBucketMutations() {
   const qc = useQueryClient()
   const done = () => {
-    qc.invalidateQueries({ queryKey: keys.tags })
-    qc.invalidateQueries({ queryKey: ['t'] }) // tag chips on accounts/portfolios
+    qc.invalidateQueries({ queryKey: keys.buckets })
+    qc.invalidateQueries({ queryKey: ['t'] }) // bucket names/colours on accounts, analytics, metrics
   }
   return {
-    create: useMutation({ mutationFn: tagsApi.create, onSuccess: done }),
-    update: useMutation({ mutationFn: (v: { id: string; name?: string; description?: string | null }) => tagsApi.update(v.id, v), onSuccess: done }),
-    remove: useMutation({ mutationFn: tagsApi.remove, onSuccess: done }),
-    seed: useMutation({ mutationFn: tagsApi.seed, onSuccess: done }),
+    create: useMutation({ mutationFn: (body: BucketBody & { name: string }) => bucketsApi.create(body), onSuccess: done }),
+    update: useMutation({ mutationFn: (v: BucketBody & { id: string }) => bucketsApi.update(v.id, v), onSuccess: done }),
+    reorder: useMutation({ mutationFn: bucketsApi.reorder, onSuccess: done }),
+    archive: useMutation({ mutationFn: bucketsApi.archive, onSuccess: done }),
+    unarchive: useMutation({ mutationFn: bucketsApi.unarchive, onSuccess: done }),
+    remove: useMutation({ mutationFn: bucketsApi.remove, onSuccess: done }),
+    seed: useMutation({ mutationFn: bucketsApi.seed, onSuccess: done }),
   }
 }
 
@@ -71,7 +92,7 @@ export function useAccounts() {
 
 export function useAccount(id: string) {
   const { workspaceId, enabled } = useScoped()
-  return useQuery({ queryKey: keys.account(workspaceId, id), queryFn: () => accountsApi.get(id), enabled })
+  return useQuery({ queryKey: keys.account(workspaceId, id), queryFn: () => accountsApi.get(id), enabled: enabled && !!id })
 }
 
 export function useBalances(id: string) {
@@ -109,7 +130,7 @@ export function useConsolidated() {
 
 export function usePortfolio(id: string) {
   const { workspaceId, enabled } = useScoped()
-  return useQuery({ queryKey: keys.portfolio(workspaceId, id), queryFn: () => portfoliosApi.get(id), enabled })
+  return useQuery({ queryKey: keys.portfolio(workspaceId, id), queryFn: () => portfoliosApi.get(id), enabled: enabled && !!id })
 }
 
 export function useSnapshots(id: string) {
@@ -131,7 +152,7 @@ export function useSnapshotPrefill(id: string, asOf: string) {
   return useQuery({
     queryKey: keys.prefill(workspaceId, id, asOf),
     queryFn: () => portfoliosApi.prefill(id, asOf),
-    enabled: enabled && /^\d{4}-\d{2}-\d{2}$/.test(asOf),
+    enabled: enabled && !!id && /^\d{4}-\d{2}-\d{2}$/.test(asOf),
   })
 }
 
@@ -141,7 +162,7 @@ export function usePortfolioMutations() {
   const done = () => invalidateWorkspaceData(qc, workspaceId)
   return {
     create: useMutation({ mutationFn: (body: PortfolioInput) => portfoliosApi.create(body), onSuccess: done }),
-    update: useMutation({ mutationFn: (v: { id: string; body: Partial<PortfolioInput> }) => portfoliosApi.update(v.id, v.body), onSuccess: done }),
+    update: useMutation({ mutationFn: (v: { id: string; body: Partial<Omit<PortfolioInput, 'snapshot'>> }) => portfoliosApi.update(v.id, v.body), onSuccess: done }),
     remove: useMutation({ mutationFn: (id: string) => portfoliosApi.remove(id), onSuccess: done }),
     createSnapshot: useMutation({
       mutationFn: (v: { id: string; as_of: string; note?: string | null; holdings: HoldingInput[] }) => portfoliosApi.createSnapshot(v.id, v),
@@ -156,4 +177,81 @@ export function usePortfolioMutations() {
 export function useOverview(range: AnalyticsRange) {
   const { workspaceId, enabled } = useScoped()
   return useQuery({ queryKey: keys.analytics(workspaceId, range), queryFn: () => analyticsApi.overview(range), enabled })
+}
+
+// ── bucket splits, milestones & metrics ─────────────────────────────────────────
+
+export function useAccountSplits(accountId: string | null) {
+  const { workspaceId, enabled } = useScoped()
+  return useQuery({
+    queryKey: keys.splits(workspaceId, accountId ?? ''),
+    queryFn: () => splitsApi.get(accountId as string),
+    enabled: enabled && !!accountId,
+  })
+}
+
+export function useSplitMutations() {
+  const qc = useQueryClient()
+  const { workspaceId } = useWorkspace()
+  const done = () => invalidateWorkspaceData(qc, workspaceId)
+  return {
+    create: useMutation({ mutationFn: (v: { accountId: string; body: SplitInput }) => splitsApi.create(v.accountId, v.body), onSuccess: done }),
+    remove: useMutation({ mutationFn: (v: { accountId: string; splitId: string }) => splitsApi.remove(v.accountId, v.splitId), onSuccess: done }),
+  }
+}
+
+export function useMilestones() {
+  const { workspaceId, enabled } = useScoped()
+  return useQuery({ queryKey: keys.milestones(workspaceId), queryFn: milestonesApi.list, enabled })
+}
+
+export function useMetrics() {
+  const { workspaceId, enabled } = useScoped()
+  return useQuery({ queryKey: keys.metrics(workspaceId), queryFn: milestonesApi.metrics, enabled })
+}
+
+export function useMilestoneMutations() {
+  const qc = useQueryClient()
+  const { workspaceId } = useWorkspace()
+  const done = () => invalidateWorkspaceData(qc, workspaceId)
+  return {
+    create: useMutation({ mutationFn: (body: MilestoneInput) => milestonesApi.create(body), onSuccess: done }),
+    update: useMutation({ mutationFn: (v: { id: string; body: MilestoneInput }) => milestonesApi.update(v.id, v.body), onSuccess: done }),
+    remove: useMutation({ mutationFn: (id: string) => milestonesApi.remove(id), onSuccess: done }),
+  }
+}
+
+// ── dashboard ────────────────────────────────────────────────────────────────
+
+export function useDashboard() {
+  const { workspaceId, enabled } = useScoped()
+  return useQuery({ queryKey: keys.dashboard(workspaceId), queryFn: dashboardApi.get, enabled })
+}
+
+// ── wealth estimator ─────────────────────────────────────────────────────────
+
+export function useEstimatorPool(enabled = true) {
+  const { workspaceId, enabled: scoped } = useScoped()
+  return useQuery({ queryKey: keys.pool(workspaceId), queryFn: estimatorApi.pool, enabled: scoped && enabled })
+}
+
+export function useInquiries() {
+  const { workspaceId, enabled } = useScoped()
+  return useQuery({ queryKey: keys.inquiries(workspaceId), queryFn: estimatorApi.list, enabled })
+}
+
+export function useInquiry(id: string) {
+  const { workspaceId, enabled } = useScoped()
+  return useQuery({ queryKey: keys.inquiry(workspaceId, id), queryFn: () => estimatorApi.get(id), enabled: enabled && !!id, retry: false })
+}
+
+export function useInquiryMutations() {
+  const qc = useQueryClient()
+  const { workspaceId } = useWorkspace()
+  const done = () => qc.invalidateQueries({ queryKey: ['t', workspaceId, 'estimator'] })
+  return {
+    remove: useMutation({ mutationFn: (id: string) => estimatorApi.remove(id), onSuccess: done }),
+    /** After a new inquiry is saved (it's made through a stream, not a mutation). */
+    refresh: done,
+  }
 }

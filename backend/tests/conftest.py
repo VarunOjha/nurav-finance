@@ -12,9 +12,6 @@ os.environ.pop("NURAV_CREDS_TOKEN", None)
 os.environ["ENV_FILE"] = os.devnull
 os.environ.setdefault("DATABASE_URL", "postgresql://postgres:postgres@localhost:55439/nurav_finance_test")
 os.environ["JWT_SECRET"] = "test-secret-" + "x" * 40
-from cryptography.fernet import Fernet  # noqa: E402
-
-os.environ["ACCOUNT_NUMBER_KEY"] = Fernet.generate_key().decode()
 
 import pathlib  # noqa: E402
 
@@ -87,6 +84,9 @@ class Api:
     def post(self, url, json=None, **kw):
         return self.client.post(url, json=json, headers=self.headers(kw.pop("workspace_id", None)), **kw)
 
+    def put(self, url, json=None, **kw):
+        return self.client.put(url, json=json, headers=self.headers(kw.pop("workspace_id", None)), **kw)
+
     def patch(self, url, json=None, **kw):
         return self.client.patch(url, json=json, headers=self.headers(kw.pop("workspace_id", None)), **kw)
 
@@ -98,8 +98,16 @@ class Api:
         assert res.status_code == 200, res.text
         return res.json()
 
-    def tags(self) -> dict[str, str]:
-        return {t["name"]: t["id"] for t in self.get("/api/tags").json()}
+    def buckets(self) -> dict[str, str]:
+        return {b["name"]: b["id"] for b in self.get("/api/buckets").json()}
+
+    def split(self, account_id: str, lines: dict[str, str | int], effective_from: str | None = None, status: int = 201) -> dict:
+        """lines: {bucket name: percent}."""
+        ids = self.buckets()
+        body = {"effective_from": effective_from, "lines": [{"bucket_id": ids[name], "percent": str(pct)} for name, pct in lines.items()]}
+        res = self.post(f"/api/accounts/{account_id}/splits", json=body)
+        assert res.status_code == status, res.text
+        return res.json()
 
     def account(self, **overrides) -> dict:
         body = {"name": "Checking", "account_type": "checking", "currency": "USD", **overrides}

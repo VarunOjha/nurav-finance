@@ -9,8 +9,6 @@ vi.mock('../context/WorkspaceContext', () => ({ useWorkspace: () => ({ workspace
 vi.mock('../context/AuthContext', () => ({ useAuth: () => ({ user: { first_name: 'Asha', last_name: 'Rao' } }) }))
 vi.mock('../hooks/queries', () => ({
   useAccountMutations: () => ({ create: { mutateAsync: createAccount, isPending: false }, update: { mutateAsync: vi.fn(), isPending: false } }),
-  useTags: () => ({ data: [] }),
-  useTagMutations: () => ({ create: { mutateAsync: vi.fn(), isPending: false } }),
 }))
 
 describe('banks', () => {
@@ -28,9 +26,10 @@ describe('AccountFormModal', () => {
     const onSaved = vi.fn()
     render(<AccountFormModal open onOpenChange={() => {}} onSaved={onSaved} />)
 
-    // Details are folded away when adding; the holder comes from the profile.
+    // No personal or reference details are asked for; links are folded away.
     expect(screen.queryByLabelText(/Account number/)).not.toBeInTheDocument()
-    expect(screen.getByLabelText('Account holder')).toHaveValue('Asha Rao')
+    expect(screen.queryByLabelText(/Account holder/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Add link/ })).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /Bank or broker/ }))
     await user.type(screen.getByLabelText('Search banks'), 'hdfc')
@@ -45,14 +44,14 @@ describe('AccountFormModal', () => {
 
     await user.type(screen.getByLabelText(/Balance today/), '125000')
     await user.click(screen.getByRole('button', { name: /More details/ }))
-    expect(screen.getByLabelText(/Account number/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Add link/ })).toBeInTheDocument()
+    expect(screen.queryByLabelText(/Account number/)).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Save account' }))
     expect(createAccount).toHaveBeenCalledWith(
       expect.objectContaining({
         name: 'HDFC Bank Checking',
         institution: 'HDFC Bank',
-        holder_name: 'Asha Rao',
         account_type: 'checking',
         country: 'IN',
         currency: 'INR',

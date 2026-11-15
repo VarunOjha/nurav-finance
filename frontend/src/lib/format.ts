@@ -11,26 +11,27 @@ const LOCALE_FOR: Record<string, string> = { INR: 'en-IN' }
 
 const formatters = new Map<string, Intl.NumberFormat>()
 
-function formatter(currency: string, compact: boolean): Intl.NumberFormat {
-  const key = `${currency}|${compact}`
+function formatter(currency: string, compact: boolean, digits = 1): Intl.NumberFormat {
+  const key = `${currency}|${compact}|${digits}`
   let f = formatters.get(key)
   if (!f) {
     f = new Intl.NumberFormat(LOCALE_FOR[currency] ?? 'en-US', {
       style: 'currency',
       currency,
       currencyDisplay: 'narrowSymbol',
-      ...(compact ? { notation: 'compact', maximumFractionDigits: 1 } : { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      ...(compact ? { notation: 'compact', maximumFractionDigits: digits } : { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
     })
     formatters.set(key, f)
   }
   return f
 }
 
-export function money(value: string | number | null | undefined, currency: string, opts: { compact?: boolean } = {}): string {
+/** `compact`: $680.8K; `digits` sets the compact decimals (up to, trailing zeros dropped: $680.831K, $1.145M). */
+export function money(value: string | number | null | undefined, currency: string, opts: { compact?: boolean; digits?: number } = {}): string {
   const n = toNumber(value)
   if (n === null) return '—'
   try {
-    return formatter(currency, !!opts.compact).format(n)
+    return formatter(currency, !!opts.compact, opts.digits).format(n)
   } catch {
     return `${currency} ${n.toFixed(2)}` // unknown currency code
   }
@@ -113,6 +114,7 @@ export const ACCOUNT_TYPE_LABELS: Record<string, string> = {
   brokerage: 'Brokerage',
   investment: 'Investment',
   retirement: 'Retirement',
+  asset: 'Asset', // a house, a car…
   other: 'Other',
 }
 

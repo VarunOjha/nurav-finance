@@ -1,4 +1,5 @@
 """POST /api/portfolios/{id}/snapshots/screenshot — read holdings from screenshots.
+(POST /api/portfolios/screenshot does the same for a portfolio about to be created.)
 
 Nothing is saved: the response is a proposal the person reviews, edits and
 confirms in the browser, then saves as a normal snapshot. The images exist
@@ -10,6 +11,7 @@ The response streams NDJSON: `stage` events while it works, then one
 """
 
 import json
+import re
 import uuid
 from datetime import date, timedelta
 
@@ -40,16 +42,7 @@ def _previous(db: Session, portfolio_id: uuid.UUID, as_of: date) -> list[dict]:
     return [{"symbol": h.symbol, "name": h.name, "asset_class": h.asset_class, "quantity": plain(h.quantity, 8)} for h in s.holdings]
 
 
-@router.post("/{portfolio_id}/snapshots/screenshot")
-async def read_screenshots(
-    portfolio_id: uuid.UUID,
-    files: list[UploadFile] = File(..., description="1-4 PNG, JPEG or WebP screenshots of the holdings screen"),
-    as_of: date = Form(..., description="The snapshot date being recorded (for the comparison with the previous snapshot)"),
-    workspace: Workspace = Depends(get_current_workspace),
-    db: Session = Depends(get_db),
-    llm: OpenRouter = Depends(get_llm),
-) -> StreamingResponse:
-    p = get_portfolio(db, workspace, portfolio_id)
+async def _stream(files: list[UploadFile], currency: str, previous: list[dict], llm: OpenRouter) -> StreamingResponse:
     if not llm.enabled:
         raise HTTPException(
             status_code=503, detail="Screenshot import needs an OpenRouter key: add OPENROUTER_API_KEY to the nurav-finance vault app and restart."
@@ -66,8 +59,6 @@ async def read_screenshots(
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         finally:
             await f.close()
-    previous = _previous(db, p.id, as_of)
-    currency = p.currency
 
     async def events():
         async for event in pipeline.run(llm, screenshots, currency, previous):
@@ -75,3 +66,29 @@ async def read_screenshots(
 
     # X-Accel-Buffering: stop any proxy from holding the progress lines back.
     return StreamingResponse(events(), media_type="application/x-ndjson", headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+
+
+@router.post("/{portfolio_id}/snapshots/screenshot")
+async def read_screenshots(
+    portfolio_id: uuid.UUID,
+    files: list[UploadFile] = File(..., description="1-4 PNG, JPEG or WebP screenshots of the holdings screen"),
+    as_of: date = Form(..., description="The snapshot date being recorded (for the comparison with the previous snapshot)"),
+    workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+    llm: OpenRouter = Depends(get_llm),
+) -> StreamingResponse:
+    p = get_portfolio(db, workspace, portfolio_id)
+    return await _stream(files, p.currency, _previous(db, p.id, as_of), llm)
+
+
+@router.post("/screenshot")
+async def read_screenshots_for_new_portfolio(
+    files: list[UploadFile] = File(..., description="1-4 PNG, JPEG or WebP screenshots of the holdings screen"),
+    currency: str = Form(..., description="The new portfolio's currency (3-letter code)"),
+    workspace: Workspace = Depends(get_current_workspace),
+    llm: OpenRouter = Depends(get_llm),
+) -> StreamingResponse:
+    """The same read for a portfolio not created yet (it's created with these holdings)."""
+    if not re.fullmatch(r"[A-Z]{3}", currency):
+        raise HTTPException(status_code=422, detail="Currency must be a 3-letter code like USD")
+    return await _stream(files, currency, [], llm)

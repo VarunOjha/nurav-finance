@@ -39,15 +39,13 @@ def test_backdated_snapshot_slots_in_by_date(api: Api):
 
 
 def test_snapshot_validation(api: Api):
-    port = api.portfolio(opened_on="2024-01-01")
+    port = api.portfolio()
     url = f"/api/portfolios/{port['id']}/snapshots"
     dup_symbols = {
         "as_of": "2024-02-01",
         "holdings": [{"symbol": "aapl", "quantity": "1", "current_price": "1"}, {"symbol": "AAPL", "quantity": "1", "current_price": "1"}],
     }
     assert api.post(url, json=dup_symbols).status_code == 422
-    early = {"as_of": "2023-12-01", "holdings": [{"symbol": "X", "quantity": "1", "current_price": "1"}]}
-    assert api.post(url, json=early).status_code == 422
     assert api.post(url, json={"as_of": "2024-02-01", "holdings": []}).status_code == 422
 
 
@@ -150,7 +148,7 @@ def test_portfolio_must_belong_to_a_brokerage_account(api: Api):
     assert port["account"]["id"] == broker["id"]
     assert api.patch(f"/api/portfolios/{port['id']}", json={"account_id": None}).status_code == 422
     assert api.patch(f"/api/portfolios/{port['id']}", json={"account_id": savings["id"]}).status_code == 422
-    # The account can't stop being a brokerage account while it has portfolios.
+    # The account can't stop being a brokerage account while it has a portfolio.
     assert api.patch(f"/api/accounts/{broker['id']}", json={"account_type": "savings"}).status_code == 409
     assert api.get(f"/api/accounts/{broker['id']}").json()["portfolios"] == [{"id": port["id"], "name": "Robinhood"}]
 
@@ -181,3 +179,33 @@ def test_consolidated_shows_starting_stake_from_avg_buy_price(api: Api):
     # Cost-side breakdowns cover the same holdings as the starting stake.
     assert {s["label"]: Decimal(s["value"]) for s in usd["cost_by_portfolio"]} == {"Robinhood": 2000, "Schwab": 1500}
     assert {s["label"]: Decimal(s["value"]) for s in usd["cost_by_asset_class"]} == {"stock": 3500}
+
+
+def test_one_portfolio_per_account_and_created_with_its_first_holdings(api: Api):
+    broker = api.account(name="Zerodha Brokerage", account_type="brokerage", currency="INR")
+    first = {"as_of": "2026-11-07", "holdings": [{"symbol": "infy", "quantity": "10", "current_price": "1500", "asset_class": "stock"}]}
+    body = {"name": "Zerodha", "currency": "INR", "account_id": broker["id"], "snapshot": first}
+    res = api.post("/api/portfolios", json=body)
+    assert res.status_code == 201, res.text
+    p = res.json()
+    snaps = api.get(f"/api/portfolios/{p['id']}/snapshots").json()
+    assert [(s["as_of"], s["holdings_count"]) for s in snaps] == [("2026-11-07", 1)]
+
+    # A second portfolio on the same account is refused, whichever way it's tried.
+    again = api.post("/api/portfolios", json=body)
+    assert again.status_code == 409 and "already has its portfolio “Zerodha”" in again.json()["detail"]
+    other = api.portfolio(name="Fidelity", currency="INR")
+    assert api.patch(f"/api/portfolios/{other['id']}", json={"account_id": broker["id"]}).status_code == 409
+    assert api.patch(f"/api/portfolios/{p['id']}", json={"account_id": broker["id"], "name": "Kite"}).status_code == 200  # itself is fine
+
+    # Bad first holdings → nothing is created at all.
+    fresh = api.account(name="Groww", account_type="brokerage", currency="INR")
+    bad = {**body, "account_id": fresh["id"], "snapshot": {"as_of": "2999-01-01", "holdings": first["holdings"]}}
+    assert api.post("/api/portfolios", json=bad).status_code == 422
+    dup = {**body, "account_id": fresh["id"], "snapshot": {"as_of": "2026-11-07", "holdings": first["holdings"] * 2}}
+    assert api.post("/api/portfolios", json=dup).status_code == 422
+    assert [x["name"] for x in api.get("/api/portfolios").json() if x["account"] and x["account"]["id"] == fresh["id"]] == []
+
+    # Deleting the portfolio frees the account for a new one.
+    assert api.delete(f"/api/portfolios/{p['id']}").status_code == 204
+    assert api.post("/api/portfolios", json=body).status_code == 201

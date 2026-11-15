@@ -1,9 +1,10 @@
 import { Fragment, type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { useAccount, usePortfolio } from '../hooks/queries'
+import { useAccount, useInquiry, usePortfolio } from '../hooks/queries'
+import { inquiryDate } from '../lib/estimator'
 import { cn } from '../lib/cn'
 
-const SECTIONS: Record<string, string> = { accounts: 'Accounts', portfolios: 'Portfolios', analytics: 'Analytics' }
+const SECTIONS: Record<string, string> = { dashboard: 'Dashboard', accounts: 'Accounts', portfolios: 'Portfolios', analytics: 'Analytics', metrics: 'Metrics', estimator: 'Wealth estimator' }
 
 interface Crumb {
   key: string
@@ -24,6 +25,11 @@ function PortfolioName({ id }: { id: string }) {
   return <>{data?.name ?? (error ? 'Not found' : '…')}</>
 }
 
+function InquiryName({ id }: { id: string }) {
+  const { data, error } = useInquiry(id)
+  return <>{data ? inquiryDate(data.created_at) : error ? 'Not found' : '…'}</>
+}
+
 /** The trail after the workspace switcher, from the current path. */
 export function crumbsFor(pathname: string): Crumb[] {
   const [section, id, sub, subId] = pathname.split('/').filter(Boolean)
@@ -32,7 +38,9 @@ export function crumbsFor(pathname: string): Crumb[] {
   const crumbs: Crumb[] = [{ key: section, label: title, to: `/${section}` }]
   if (id && section === 'accounts') crumbs.push({ key: id, label: <AccountName id={id} />, to: `/accounts/${id}` })
   if (id && section === 'portfolios') crumbs.push({ key: id, label: <PortfolioName id={id} />, to: `/portfolios/${id}` })
-  if (section === 'portfolios' && sub === 'snapshots' && subId === 'new') crumbs.push({ key: 'new', label: 'New snapshot' })
+  if (id && section === 'estimator') crumbs.push({ key: id, label: <InquiryName id={id} />, to: `/estimator/${id}` })
+  if (section === 'portfolios' && sub === 'snapshots' && subId === 'new') crumbs.push({ key: 'new', label: 'Record holdings' })
+  if (section === 'accounts' && sub === 'portfolio' && subId === 'new') crumbs.push({ key: 'new', label: 'Add portfolio' })
   delete crumbs[crumbs.length - 1].to // the last crumb is where you are
   return crumbs
 }

@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ExternalLink, Plus, Trash2 } from 'lucide-react'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { apiErrorMessage } from '../api/client'
-import { accountsApi } from '../api/endpoints'
 import { AccountFormModal } from '../components/AccountFormModal'
 import { BankLogo } from '../components/BankLogo'
-import { PortfolioFormModal, afterPortfolioSaved } from '../components/PortfolioFormModal'
+import { BucketBar } from '../components/BucketBar'
+import { BucketSplitModal } from '../components/BucketSplitModal'
+import { Swatch } from '../components/charts/kit'
+import { PortfolioFormModal } from '../components/PortfolioFormModal'
 import { axisTick, useChartTheme } from '../components/charts/chartTheme'
 import { Button } from '../components/ui/Button'
 import { AmountField } from '../components/ui/AmountInput'
@@ -16,6 +18,7 @@ import { ConfirmDialog } from '../components/ui/Modal'
 import { Chip, Empty, ErrorBox, Loading, Page, PageHeader, StatCard, Table, onlyBelow, showFrom, td, th } from '../components/ui/Primitives'
 import { useAccount, useAccountMutations, useBalances, usePortfolios } from '../hooks/queries'
 import { parseAmount } from '../lib/amount'
+import { bucketColor } from '../lib/buckets'
 import { cn } from '../lib/cn'
 import {
   ACCOUNT_TYPE_LABELS,
@@ -32,7 +35,7 @@ import {
   toNumber,
   todayISO,
 } from '../lib/format'
-import type { AccountDetail, BalanceEntry, BalanceHistory } from '../types/api'
+import type { AccountDetail, BalanceEntry, BalanceHistory, PortfolioSummary } from '../types/api'
 
 const DECIMAL = /^-?\d+(\.\d{1,4})?$/
 
@@ -55,10 +58,13 @@ export default function AccountDetailPage() {
   const navigate = useNavigate()
   const { data: account, isLoading, error } = useAccount(accountId)
   const { data: history } = useBalances(accountId)
-  const { remove } = useAccountMutations()
+  const { remove, update } = useAccountMutations()
+  const [closeOpen, setCloseOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [addPortfolio, setAddPortfolio] = useState(false)
+  const [bucketsOpen, setBucketsOpen] = useState(false)
+  const { data: portfolios } = usePortfolios()
 
   if (isLoading) return <Page><Loading label="Loading account" /></Page>
   if (error || !account) {
@@ -76,19 +82,31 @@ export default function AccountDetailPage() {
   const subtitle = [
     account.institution,
     ACCOUNT_TYPE_LABELS[account.account_type],
-    [account.city, countryName(account.country)].filter(Boolean).join(', '),
+    countryName(account.country),
     account.currency,
-    account.closed_on ? `closed ${formatDate(account.closed_on)}` : account.opened_on ? `opened ${formatDate(account.opened_on)}` : null,
+    account.closed_on ? `closed ${formatDate(account.closed_on)}` : null,
   ]
     .filter(Boolean)
     .join(' · ')
+
+  // One portfolio per account: add it the first time, then record new holdings on it
+  // (not on a closed one, and not on a closed account).
+  const existing = account.portfolios[0] ?? null
+  const existingClosed = !!existing && portfolios?.find((p) => p.id === existing.id)?.status === 'closed'
+  const holdingsAction =
+    account.status === 'active' && PORTFOLIO_ACCOUNT_TYPES.has(account.account_type) && !existingClosed
+      ? {
+          label: existing ? 'Record holdings' : 'Add portfolio',
+          onClick: () => (existing ? navigate(`/portfolios/${existing.id}/snapshots/new`) : setAddPortfolio(true)),
+        }
+      : null
 
   return (
     <Page>
       <PageHeader
         title={
           <span className="flex items-center gap-3">
-            <BankLogo institution={account.institution} size="xl" />
+            <BankLogo institution={account.institution} accountType={account.account_type} size="xl" />
             {account.name}
             {account.status === 'closed' && <Chip>closed</Chip>}
           </span>
@@ -99,12 +117,24 @@ export default function AccountDetailPage() {
             <Button variant="secondary" onClick={() => setDeleteOpen(true)}>
               Delete
             </Button>
-            {account.status === 'active' && PORTFOLIO_ACCOUNT_TYPES.has(account.account_type) && (
-              <Button variant="secondary" onClick={() => setAddPortfolio(true)}>
-                <Plus className="w-3.5 h-3.5" aria-hidden="true" /> Add portfolio
+            {account.status === 'active' ? (
+              <Button variant="secondary" onClick={() => setCloseOpen(true)}>
+                Close account
+              </Button>
+            ) : (
+              <Button variant="secondary" isLoading={update.isPending} onClick={() => update.mutate({ id: account.id, body: { closed_on: null } })}>
+                Reopen
               </Button>
             )}
-            <Button onClick={() => setEditOpen(true)}>Edit details</Button>
+            {holdingsAction && (
+              <Button variant="secondary" onClick={holdingsAction.onClick}>
+                <Plus className="w-3.5 h-3.5" aria-hidden="true" /> {holdingsAction.label}
+              </Button>
+            )}
+            <Button variant="secondary" onClick={() => setEditOpen(true)}>
+              Edit details
+            </Button>
+            <Button onClick={() => setBucketsOpen(true)}>Buckets</Button>
           </>
         }
       />
@@ -125,7 +155,7 @@ export default function AccountDetailPage() {
             />
           </div>
 
-          <AccountPortfolios account={account} onAdd={() => setAddPortfolio(true)} />
+          <AccountPortfolio account={account} portfolios={portfolios} action={holdingsAction} />
           {history && <BalanceChart history={history} currency={account.currency} />}
           {history && <HistoryTable account={account} entries={history.entries} />}
         </div>
@@ -135,27 +165,39 @@ export default function AccountDetailPage() {
             <RecordBalance account={account} />
           ) : (
             <div id="record" className="border border-line p-5 font-mono text-[11px] text-ink-muted">
-              Closed on {formatDate(account.closed_on)}. Backdated entries up to that date can still be recorded by clearing the closed date in Edit.
+              Closed on {formatDate(account.closed_on)}. Reopen it to record more balances.
             </div>
           )}
-          <Details account={account} />
+          <BucketsPanel account={account} onAdjust={() => setBucketsOpen(true)} />
+          {account.links.length > 0 && <Links account={account} />}
         </aside>
       </div>
 
       <AccountFormModal open={editOpen} onOpenChange={setEditOpen} account={account} />
-      <PortfolioFormModal open={addPortfolio} onOpenChange={setAddPortfolio} forAccount={account} onSaved={(p, o) => navigate(afterPortfolioSaved(p, o))} />
+      <BucketSplitModal account={bucketsOpen ? account : null} onOpenChange={setBucketsOpen} />
+      <PortfolioFormModal open={addPortfolio} onOpenChange={setAddPortfolio} forAccount={account} onSaved={(url) => navigate(url)} />
       <ConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         title={`Delete ${account.name}?`}
         body={
-          account.portfolios.length
-            ? `The account, its balance history, identifiers and links disappear from every list, total and chart — and so do its ${account.portfolios.length} portfolio${account.portfolios.length === 1 ? '' : 's'} (${account.portfolios.map((p) => p.name).join(', ')}) with all their snapshots.`
-            : 'The account, its balance history, identifiers and links disappear from every list, total and chart.'
+          existing
+            ? `The account, its balance history and links disappear from every list, total and chart — and so does its portfolio (${existing.name}) with all its snapshots.`
+            : 'The account, its balance history and links disappear from every list, total and chart.'
         }
         isLoading={remove.isPending}
         error={remove.error ? apiErrorMessage(remove.error) : null}
         onConfirm={() => remove.mutate(account.id, { onSuccess: () => navigate('/accounts', { replace: true }) })}
+      />
+      <ConfirmDialog
+        open={closeOpen}
+        onOpenChange={setCloseOpen}
+        title={`Close ${account.name}?`}
+        body="It stays in your history up to today and stops counting after that. You can reopen it any time."
+        confirmLabel="Close account"
+        isLoading={update.isPending}
+        error={update.error ? apiErrorMessage(update.error) : null}
+        onConfirm={() => update.mutate({ id: account.id, body: { closed_on: todayISO() } }, { onSuccess: () => setCloseOpen(false) })}
       />
     </Page>
   )
@@ -334,7 +376,6 @@ function RecordBalance({ account }: { account: AccountDetail }) {
         label="As of"
         value={asOf}
         max={todayISO()}
-        min={account.opened_on ?? undefined}
         onChange={(e) => setAsOf(e.target.value)}
       />
       <TextArea id="rb-note" label="Note · optional" value={note} onChange={(e) => setNote(e.target.value)} />
@@ -350,6 +391,53 @@ function RecordBalance({ account }: { account: AccountDetail }) {
   )
 }
 
+/** Read-only summary of the split in force today; the Buckets button edits it. */
+function BucketsPanel({ account, onAdjust }: { account: AccountDetail; onAdjust: () => void }) {
+  const theme = useChartTheme()
+  const parts = account.buckets.map((b) => ({ name: b.name, color: b.color, percent: b.percent }))
+  return (
+    <section className="border border-line p-5 flex flex-col gap-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="font-mono text-[10px] font-medium uppercase tracking-widest text-ink-muted">Buckets · today</h2>
+        <button type="button" onClick={onAdjust} className="font-mono text-[10px] uppercase tracking-widest text-ink-muted hover:text-ink hover:underline">
+          Adjust
+        </button>
+      </div>
+      {parts.length === 0 ? (
+        <button
+          type="button"
+          onClick={onAdjust}
+          className="font-mono text-[11px] text-ink-muted border border-dashed border-line px-4 py-4 text-left hover:text-ink hover:border-ink-faint"
+        >
+          Unassigned — this account&apos;s money isn&apos;t in any bucket yet. Split it across buckets →
+        </button>
+      ) : (
+        <>
+          <BucketBar parts={parts} height="h-2.5" />
+          <ul className="flex flex-col">
+            {account.buckets.map((b) => {
+              const balance = toNumber(account.balance)
+              return (
+                <li key={b.bucket_id} className="flex items-center gap-2 py-1.5 border-b border-line last:border-b-0 font-mono text-xs">
+                  <Swatch color={bucketColor(theme, b.color)} />
+                  <span className="text-ink flex-1 truncate">{b.name}</span>
+                  <span className="text-ink-muted num">{Number(b.percent).toLocaleString(undefined, { maximumFractionDigits: 2 })}%</span>
+                  {balance !== null && account.portfolios.length === 0 && (
+                    <span className="text-ink num w-28 text-right">{money((balance * Number(b.percent)) / 100, account.currency)}</span>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+          {account.portfolios.length > 0 && (
+            <p className="font-mono text-[10px] text-ink-muted">Applies to this account&apos;s portfolio too — open Buckets to see the amounts.</p>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
+
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex justify-between gap-4 py-2 border-b border-line last:border-b-0">
@@ -359,53 +447,11 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-function Details({ account }: { account: AccountDetail }) {
-  const [revealed, setRevealed] = useState<string | null>(null)
-  const [revealError, setRevealError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  // Never keep the plain number around after leaving the account.
-  useEffect(() => setRevealed(null), [account.id])
-
-  const reveal = async () => {
-    setBusy(true)
-    setRevealError(null)
-    try {
-      setRevealed((await accountsApi.reveal(account.id)).account_number)
-    } catch (err) {
-      setRevealError(apiErrorMessage(err, 'Could not reveal the number'))
-    } finally {
-      setBusy(false)
-    }
-  }
-
+function Links({ account }: { account: AccountDetail }) {
   return (
     <section className="border border-line p-5 flex flex-col gap-2">
-      <h2 className="font-mono text-[10px] font-medium uppercase tracking-widest text-ink-muted mb-1">Details</h2>
+      <h2 className="font-mono text-[10px] font-medium uppercase tracking-widest text-ink-muted mb-1">Links</h2>
       <dl>
-        <Row label="Holder">{account.holder_name || '—'}</Row>
-        <Row label="Account no.">
-          {account.has_account_number ? (
-            <span className="inline-flex items-center gap-3">
-              <span className="num">{revealed ?? account.account_number_masked}</span>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => (revealed ? setRevealed(null) : reveal())}
-                className="font-mono text-[10px] uppercase tracking-widest text-ink-muted hover:text-ink underline-offset-2 hover:underline"
-              >
-                {revealed ? 'Hide' : busy ? '…' : 'Reveal'}
-              </button>
-            </span>
-          ) : (
-            '—'
-          )}
-        </Row>
-        {account.identifiers.map((i) => (
-          <Row key={i.id} label={i.label}>
-            {i.value}
-          </Row>
-        ))}
         {account.links.map((l) => (
           <Row key={l.id} label={l.label}>
             <a href={l.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:underline">
@@ -414,45 +460,46 @@ function Details({ account }: { account: AccountDetail }) {
             </a>
           </Row>
         ))}
-        <Row label="Tags">
-          <span className="inline-flex flex-wrap justify-end gap-1.5">
-            {account.tags.length ? account.tags.map((t) => <Chip key={t.id}>{t.name}</Chip>) : '—'}
-          </span>
-        </Row>
       </dl>
-      {revealError && <p className="font-mono text-[10px] text-error">{revealError}</p>}
-      {account.notes && <p className="font-mono text-[11px] text-ink-muted whitespace-pre-wrap border-t border-line pt-3">{account.notes}</p>}
     </section>
   )
 }
 
-// Investment-type accounts list their portfolios (latest value each) and can add one,
-// prefilled from the account. Other types show the list only if one is already linked.
-function AccountPortfolios({ account, onAdd }: { account: AccountDetail; onAdd: () => void }) {
-  const { data: all } = usePortfolios()
-  const canAdd = PORTFOLIO_ACCOUNT_TYPES.has(account.account_type)
-  const linked = (all ?? []).filter((p) => p.account?.id === account.id)
-  if (!canAdd && account.portfolios.length === 0) return null
+// Investment-type accounts show their portfolio (one per account) and can add it,
+// prefilled from the account; once it exists, the button records new holdings on it.
+function AccountPortfolio({
+  account,
+  portfolios,
+  action,
+}: {
+  account: AccountDetail
+  portfolios: PortfolioSummary[] | undefined
+  action: { label: string; onClick: () => void } | null
+}) {
+  const canHave = PORTFOLIO_ACCOUNT_TYPES.has(account.account_type)
+  const linked = (portfolios ?? []).filter((p) => p.account?.id === account.id)
+  if (!canHave && account.portfolios.length === 0) return null
 
   return (
     <section aria-labelledby="account-portfolios" className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-4">
         <h2 id="account-portfolios" className="font-mono text-[11px] uppercase tracking-widest text-ink">
-          Portfolios{linked.length ? ` · ${linked.length}` : ''}
+          Portfolio
         </h2>
-        {canAdd && (
-          <Button variant="secondary" onClick={onAdd}>
-            <Plus className="w-3.5 h-3.5" aria-hidden="true" /> Add portfolio
+        {action && (
+          <Button variant="secondary" onClick={action.onClick}>
+            <Plus className="w-3.5 h-3.5" aria-hidden="true" /> {action.label}
           </Button>
         )}
       </div>
       {linked.length === 0 ? (
         <button
           type="button"
-          onClick={onAdd}
+          onClick={action?.onClick}
+          disabled={!action}
           className="border border-dashed border-line px-5 py-4 text-left font-mono text-[11px] text-ink-muted hover:text-ink hover:border-ink"
         >
-          No portfolios yet — add one to track this account&apos;s holdings as dated snapshots.
+          No portfolio yet — add it to track this account&apos;s holdings as dated snapshots.
         </button>
       ) : (
         <Table>

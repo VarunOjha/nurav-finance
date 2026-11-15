@@ -4,6 +4,9 @@
 
 let pending: { portfolioId: string; files: File[] } | null = null
 
+/** Key for screenshots waiting for a portfolio not created yet (it's created with its first holdings). */
+export const draftKey = (accountId: string) => `draft:${accountId}`
+
 export function handOffScreenshots(portfolioId: string, files: File[]) {
   pending = files.length ? { portfolioId, files } : null
 }

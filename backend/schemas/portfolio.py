@@ -6,7 +6,6 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from schemas.common import AsOfDate, CurrencyCode, ORMModel
-from schemas.workspaces import TagRef
 
 AssetClass = Literal["stock", "etf", "mutual_fund", "bond", "cash", "crypto", "other"]
 
@@ -15,11 +14,11 @@ class PortfolioCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     provider: str | None = Field(default=None, max_length=120)
     currency: CurrencyCode
-    account_id: uuid.UUID  # every portfolio belongs to a brokerage account
-    opened_on: date | None = None
+    account_id: uuid.UUID  # every portfolio belongs to a brokerage account (one per account)
     closed_on: date | None = None
-    notes: str | None = Field(default=None, max_length=2000)
-    tag_ids: list[uuid.UUID] = []
+    # The first holdings, saved in the same transaction. The app always sends them,
+    # so an abandoned "Add portfolio" leaves nothing behind.
+    snapshot: "SnapshotCreate | None" = None
 
 
 class PortfolioUpdate(BaseModel):
@@ -27,10 +26,7 @@ class PortfolioUpdate(BaseModel):
     provider: str | None = Field(default=None, max_length=120)
     currency: CurrencyCode | None = None
     account_id: uuid.UUID | None = None
-    opened_on: date | None = None
-    closed_on: date | None = None
-    notes: str | None = Field(default=None, max_length=2000)
-    tag_ids: list[uuid.UUID] | None = None
+    closed_on: date | None = None  # a date closes it, null reopens it
 
 
 class AccountRef(ORMModel):
@@ -44,11 +40,8 @@ class PortfolioSummary(BaseModel):
     provider: str | None
     currency: str
     account: AccountRef | None
-    opened_on: date | None
     closed_on: date | None
     status: Literal["active", "closed"]
-    notes: str | None
-    tags: list[TagRef]
     value: Decimal | None
     value_as_of: date | None
     previous_value: Decimal | None
@@ -171,3 +164,6 @@ class CurrencyConsolidation(BaseModel):
 
 class Consolidated(BaseModel):
     currencies: list[CurrencyConsolidation]
+
+
+PortfolioCreate.model_rebuild()

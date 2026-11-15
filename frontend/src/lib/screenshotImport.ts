@@ -20,7 +20,7 @@ export function screenshotProblem(file: File): string | null {
 }
 
 /** Splits an NDJSON byte stream into events; tolerant of chunks that end mid-line. */
-export function ndjsonParser(onEvent: (e: ScreenshotEvent) => void) {
+export function ndjsonParser<E = ScreenshotEvent>(onEvent: (e: E) => void) {
   let buffer = ''
   return (chunk: string, end = false) => {
     buffer += chunk
@@ -29,7 +29,7 @@ export function ndjsonParser(onEvent: (e: ScreenshotEvent) => void) {
     for (const line of lines) {
       if (!line.trim()) continue
       try {
-        onEvent(JSON.parse(line) as ScreenshotEvent)
+        onEvent(JSON.parse(line) as E)
       } catch {
         // A malformed line is skipped; the stream goes on.
       }
@@ -37,8 +37,9 @@ export function ndjsonParser(onEvent: (e: ScreenshotEvent) => void) {
   }
 }
 
+/** `target`: the portfolio's id, or `{ currency }` for a portfolio that will be created with these holdings. */
 export async function importScreenshots(
-  portfolioId: string,
+  target: string | { currency: string },
   files: File[],
   asOf: string,
   onEvent: (e: ScreenshotEvent) => void,
@@ -46,7 +47,9 @@ export async function importScreenshots(
 ): Promise<void> {
   const form = new FormData()
   files.forEach((f) => form.append('files', f, f.name || 'screenshot.png'))
-  form.append('as_of', asOf)
+  if (typeof target === 'string') form.append('as_of', asOf)
+  else form.append('currency', target.currency)
+  const url = typeof target === 'string' ? `/api/portfolios/${target}/snapshots/screenshot` : '/api/portfolios/screenshot'
   const headers: Record<string, string> = { Accept: 'application/x-ndjson' }
   const token = localStorage.getItem(TOKEN_KEY)
   const workspace = localStorage.getItem(WORKSPACE_KEY)
@@ -55,7 +58,7 @@ export async function importScreenshots(
 
   let res: Response
   try {
-    res = await fetch(`/api/portfolios/${portfolioId}/snapshots/screenshot`, { method: 'POST', headers, body: form, signal })
+    res = await fetch(url, { method: 'POST', headers, body: form, signal })
   } catch (e) {
     if ((e as Error).name === 'AbortError') return
     throw new ScreenshotImportError('Cannot reach the server')

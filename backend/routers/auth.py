@@ -5,9 +5,9 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from dependencies import get_current_user
-from models import Tag, User, Workspace
-from models.tag import DEFAULT_TAGS
+from models import User, Workspace
 from models.workspace import DEFAULT_WORKSPACE_NAME
+from routers.buckets import add_defaults
 from schemas.auth import (
     ChangePasswordRequest,
     LoginRequest,
@@ -47,14 +47,12 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)) -> TokenRespo
         date_of_birth=body.date_of_birth,
         gender=body.gender,
         email=email,
-        phone=(body.phone or "").strip() or None,
         password_hash=hash_password(body.password),
     )
     db.add(user)
     db.flush()
     db.add(Workspace(user_id=user.id, name=DEFAULT_WORKSPACE_NAME, description="Me — my own accounts and portfolios", is_default=True))
-    for name, description in DEFAULT_TAGS:
-        db.add(Tag(user_id=user.id, name=name, description=description))
+    add_defaults(db, user.id, [])
     db.commit()
     db.refresh(user)
     return _token_response(user)

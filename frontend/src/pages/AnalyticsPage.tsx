@@ -2,20 +2,20 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { apiErrorMessage } from '../api/client'
+import { BucketAnalytics } from '../components/BucketAnalytics'
 import { axisTick, useChartTheme, type ChartTheme } from '../components/charts/chartTheme'
-import { AllocationDonut, ChartCard, ChartTooltip, Legend, Lines, Swatch, VelocityColumns } from '../components/charts/kit'
+import { AllocationDonut, ChartCard, ChartTooltip, Legend, Lines, VelocityColumns } from '../components/charts/kit'
 import { ACCOUNT_TYPE_ORDER, ALLOCATION_CLASS_ORDER, colorSlices, nameColors, slotColors } from '../components/charts/palette'
-import { Input, Select } from '../components/ui/Field'
 import { Empty, ErrorBox, Loading, Page, PageHeader, Segmented } from '../components/ui/Primitives'
 import { useWorkspace } from '../context/WorkspaceContext'
 import { useOverview } from '../hooks/queries'
 import { cn } from '../lib/cn'
 import { ACCOUNT_TYPE_LABELS, ASSET_CLASS_LABELS, arrow, deltaClass, money, monthLabel, percent, signedMoney, signedPercent, toNumber } from '../lib/format'
 import { compoundMonthlyRate, monthlyChanges, PACE_WINDOW, rollingMean, summarise } from '../lib/velocity'
-import type { AnalyticsRange, CurrencyAllocation, CurrencySeries, Overview, Series, TopAsset } from '../types/api'
+import type { AnalyticsRange, CurrencyAllocation, CurrencySeries, Overview, TopAsset } from '../types/api'
 
 type Scope = 'both' | 'accounts' | 'portfolios'
-type AllocationTab = 'by_type' | 'by_asset_class' | 'by_tag'
+type AllocationTab = 'by_type' | 'by_asset_class'
 
 const RANGE_OPTIONS: { value: AnalyticsRange; label: string }[] = [
   { value: '6m', label: '6M' },
@@ -142,157 +142,6 @@ function CurrencyCard({ data, months, scope, theme }: { data: CurrencySeries; mo
   )
 }
 
-const MAX_TAGS = 8 // one per categorical colour
-const ALL_CURRENCIES = '__all__'
-
-/**
- * Selected tags keep the colour slot they were picked into, so toggling one tag
- * never repaints the others. Starts with the first 8 by name.
- */
-function initialSlots(tags: string[]): (string | null)[] {
-  const sorted = [...tags].sort((a, b) => a.localeCompare(b)).slice(0, MAX_TAGS)
-  return Array.from({ length: MAX_TAGS }, (_, i) => sorted[i] ?? null)
-}
-
-export function TagTrends({ data }: { data: Overview }) {
-  const theme = useChartTheme()
-  const names = useMemo(() => data.tags.map((t) => t.tag).sort((a, b) => a.localeCompare(b)), [data.tags])
-  const [slots, setSlots] = useState(() => initialSlots(names))
-  const [search, setSearch] = useState('')
-  const [currency, setCurrency] = useState(ALL_CURRENCIES)
-
-  const live = slots.map((s) => (s && names.includes(s) ? s : null)) // drop tags gone from the data
-  const picked = live.filter((s): s is string => s !== null)
-  const full = picked.length >= MAX_TAGS
-  const tagColor = (tag: string) => {
-    const i = live.indexOf(tag)
-    return i >= 0 ? theme.series[i] : null
-  }
-  const toggle = (tag: string) =>
-    setSlots(() => {
-      const i = live.indexOf(tag)
-      if (i >= 0) return live.map((s, k) => (k === i ? null : s))
-      const free = live.indexOf(null)
-      return free < 0 ? live : live.map((s, k) => (k === free ? tag : s))
-    })
-
-  const query = search.trim().toLowerCase()
-  const visible = query ? names.filter((n) => n.toLowerCase().includes(query)) : names
-  const allCurrencies = [...new Set(data.tags.flatMap((t) => t.currencies.map((c) => c.currency)))].sort()
-  const selected = data.tags.filter((t) => picked.includes(t.tag)).sort((a, b) => live.indexOf(a.tag) - live.indexOf(b.tag))
-  const currencies = [...new Set(selected.flatMap((t) => t.currencies.map((c) => c.currency)))]
-    .filter((c) => currency === ALL_CURRENCIES || c === currency)
-    .sort()
-
-  const action = (label: string, onClick: () => void, disabled = false) => (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="font-mono text-[10px] uppercase tracking-widest text-ink-muted hover:text-ink disabled:text-ink-faint disabled:hover:text-ink-faint focus:outline-none focus-visible:underline"
-    >
-      {label}
-    </button>
-  )
-
-  return (
-    <section className="flex flex-col gap-3">
-      <h2 className={sectionTitle}>Tag trends</h2>
-      {data.tags.length === 0 ? (
-        <p className="font-mono text-[11px] text-ink-muted">No tagged accounts or portfolios yet.</p>
-      ) : (
-        <>
-          <div className="flex flex-wrap items-end gap-4">
-            <Input
-              id="tag-search"
-              aria-label="Search tags"
-              placeholder="Search tags…"
-              className="w-full sm:w-56"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            {allCurrencies.length > 1 && (
-              <Select id="tag-currency" aria-label="Filter by currency" className="w-40" value={currency} onChange={(e) => setCurrency(e.target.value)}>
-                <option value={ALL_CURRENCIES}>All currencies</option>
-                {allCurrencies.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </Select>
-            )}
-            <div className="flex items-center gap-4 pb-2">
-              <span className="font-mono text-[10px] text-ink-muted num">
-                {picked.length} of {names.length} shown{full && names.length > MAX_TAGS ? ` · ${MAX_TAGS} max` : ''}
-              </span>
-              {action('Clear', () => setSlots(Array(MAX_TAGS).fill(null)), picked.length === 0)}
-              {action('Reset', () => setSlots(initialSlots(names)))}
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2" role="group" aria-label="Tags">
-            {visible.map((tag) => {
-              const color = tagColor(tag)
-              const on = color !== null
-              return (
-                <button
-                  key={tag}
-                  type="button"
-                  aria-pressed={on}
-                  disabled={!on && full}
-                  title={!on && full ? `Up to ${MAX_TAGS} tags at once — remove one first` : undefined}
-                  onClick={() => toggle(tag)}
-                  className={cn(
-                    'inline-flex items-center gap-1.5 font-mono text-[10px] lowercase tracking-wide border px-2 py-1 min-h-8 focus:outline-none focus-visible:ring-1 focus-visible:ring-ink',
-                    on ? 'border-ink text-ink bg-paper-warm' : 'border-line text-ink-muted hover:text-ink disabled:text-ink-faint disabled:hover:text-ink-faint',
-                  )}
-                >
-                  {color && <Swatch color={color} />}
-                  {tag}
-                </button>
-              )
-            })}
-            {visible.length === 0 && <p className="font-mono text-[11px] text-ink-muted py-1">No tags match “{search.trim()}”.</p>}
-          </div>
-          {picked.length === 0 ? (
-            <p className="font-mono text-[11px] text-ink-muted">Pick one or more tags to see their trend.</p>
-          ) : currencies.length === 0 ? (
-            <p className="font-mono text-[11px] text-ink-muted">None of the picked tags hold {currency}.</p>
-          ) : (
-            <div className={cn('grid grid-cols-1 gap-4', currencies.length > 1 && 'md:grid-cols-2')}>
-              {currencies.map((cur) => {
-                const lines = selected
-                  .map((t) => ({ tag: t.tag, values: t.currencies.find((c) => c.currency === cur)?.values }))
-                  .filter((l): l is { tag: string; values: Series } => !!l.values)
-                const rows = data.months.map((month, i) => {
-                  const row: Record<string, string | number | null> = { month }
-                  lines.forEach((l, k) => (row[`t${k}`] = toNumber(l.values[i])))
-                  return row
-                })
-                const series = lines.map((l, k) => ({ key: `t${k}`, label: l.tag, color: tagColor(l.tag) ?? theme.inkFaint }))
-                return (
-                  <ChartCard key={cur} title={cur}>
-                    <Lines
-                      rows={rows}
-                      series={series}
-                      xKey="month"
-                      xFormat={(m) => monthLabel(m)}
-                      xLabel={(m) => monthLabel(m, true)}
-                      valueFormat={(v) => money(v, cur)}
-                      axisFormat={(v) => money(v, cur, { compact: true })}
-                      height={192}
-                    />
-                    {series.length > 1 && <Legend items={series.map((x) => ({ ...x, line: true }))} />}
-                  </ChartCard>
-                )
-              })}
-            </div>
-          )}
-        </>
-      )}
-    </section>
-  )
-}
-
 function scopeValues(c: CurrencySeries, scope: Scope): (number | null)[] {
   return (scope === 'accounts' ? c.accounts : scope === 'portfolios' ? c.portfolios : c.total).map(toNumber)
 }
@@ -412,7 +261,7 @@ function VelocitySection({ data, scope, columns }: { data: Overview; scope: Scop
 
 // Account balances in "What it's in": deposits are Cash; investment and retirement
 // balances are invested in something not recorded, so they get their own slice.
-const ALLOCATION_CLASS_LABELS: Record<string, string> = { ...ASSET_CLASS_LABELS, unclassified: 'Fund · unclassified' }
+const ALLOCATION_CLASS_LABELS: Record<string, string> = { ...ASSET_CLASS_LABELS, unclassified: 'Fund · unclassified', property: 'Property & assets' }
 
 function labelFor(tab: AllocationTab, label: string): string {
   if (tab === 'by_type') return ACCOUNT_TYPE_LABELS[label] ?? label
@@ -429,23 +278,14 @@ const ALLOCATION_VIEWS: { value: AllocationTab; label: string; note: string }[] 
   {
     value: 'by_asset_class',
     label: "What it's in",
-    note: 'Checking, savings, fixed deposits and uninvested brokerage cash are Cash. Portfolio holdings use their own class. Investment and retirement account balances are shown as Fund · unclassified, because what they hold isn’t recorded.',
+    note: 'Checking, savings, fixed deposits and uninvested brokerage cash are Cash. Portfolio holdings use their own class. Investment and retirement account balances are shown as Fund · unclassified, because what they hold isn’t recorded. Asset accounts (a house, a car…) are Property & assets.',
   },
-  { value: 'by_tag', label: 'By tag', note: 'An item with several tags counts towards each, so shares can add up to more than 100%.' },
 ]
 
 function AllocationGroup({ data, view, label, note }: { data: Overview; view: AllocationTab; label: string; note: string }) {
   const theme = useChartTheme()
   const groups: CurrencyAllocation[] = data.allocation[view]
-  const colorOf =
-    view === 'by_type'
-      ? slotColors(theme, ACCOUNT_TYPE_ORDER)
-      : view === 'by_asset_class'
-        ? slotColors(theme, ALLOCATION_CLASS_ORDER)
-        : nameColors(
-            theme,
-            groups.flatMap((g) => g.slices.map((x) => x.label)),
-          )
+  const colorOf = slotColors(theme, view === 'by_type' ? ACCOUNT_TYPE_ORDER : ALLOCATION_CLASS_ORDER)
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
@@ -618,7 +458,7 @@ export default function AnalyticsPage() {
             ))}
           </div>
           <VelocitySection data={data} scope={scope} columns={columns} />
-          <TagTrends data={data} />
+          <BucketAnalytics data={data} />
           <AllocationSection data={data} />
           <TopAssetsSection data={data} scope={scope} columns={columns} />
         </>

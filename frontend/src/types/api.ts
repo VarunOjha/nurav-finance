@@ -12,7 +12,6 @@ export interface User {
   date_of_birth: ISODate | null
   gender: Gender | null
   email: string
-  phone: string | null
   created_at: ISODateTime
 }
 
@@ -34,45 +33,227 @@ export interface Workspace {
   portfolio_count: number
 }
 
-export interface Tag {
+// ── Buckets (backend/schemas/buckets.py) ─────────────────────────────────────
+// Definitions belong to the user (shared by all workspaces); splits and
+// targets are per workspace.
+
+export interface Bucket {
   id: string
   name: string
   description: string | null
-  account_count: number
-  portfolio_count: number
+  /** Chart palette slot 0-7. */
+  color: number
+  position: number
+  archived: boolean
+  created_at: ISODateTime
+  /** Accounts (any workspace) whose split in force today uses this bucket. */
+  current_accounts: { id: string; name: string; workspace_id: string; workspace_name: string }[]
+  /** Has history (splits or milestones): can only be archived, not deleted. */
+  used: boolean
+  /** Live milestones with a target for this bucket. */
+  milestone_count: number
 }
 
-export interface TagRef {
+export interface BucketShare {
+  bucket_id: string
+  name: string
+  color: number
+  percent: Decimal
+}
+
+export interface SplitLine {
+  bucket_id: string
+  name: string
+  color: number
+  archived: boolean
+  percent: Decimal
+  /** Today's money in this bucket (current split only). */
+  value: Decimal | null
+}
+
+export interface Split {
+  id: string
+  /** null = the first split. */
+  effective_from: ISODate | null
+  /** The earliest split: it applies to every day before the next one. */
+  covers_history: boolean
+  /** Last day in force; null = still in force. */
+  until: ISODate | null
+  note: string | null
+  recorded_at: ISODateTime
+  lines: SplitLine[]
+}
+
+export interface AccountSplits {
+  account_id: string
+  currency: string
+  /** What the split shares out today (balance, or its open portfolios' value). */
+  value: Decimal | null
+  current: Split | null
+  history: Split[]
+}
+
+export interface SplitInput {
+  effective_from: ISODate | null
+  note?: string | null
+  lines: { bucket_id: string; percent: string }[]
+}
+
+export interface MilestoneLine {
+  id: string
+  bucket_id: string
+  bucket_name: string
+  color: number
+  /** Archived buckets stay in milestones they were in, but leave the numbers. */
+  archived: boolean
+  currency: string
+  /** The balance to reach. */
+  amount: Decimal
+  /** Expected annual return in percent. */
+  expected_return: Decimal | null
+}
+
+/** A named checkpoint ("2030"): one date, several bucket targets. */
+export interface Milestone {
   id: string
   name: string
+  target_date: ISODate
+  /** Measure from: every bucket's needed path starts from its value on this day. */
+  start_date: ISODate
+  note: string | null
+  created_at: ISODateTime
+  lines: MilestoneLine[]
 }
 
-export type AccountType = 'checking' | 'savings' | 'fixed_deposit' | 'brokerage' | 'investment' | 'retirement' | 'other'
+export interface MilestoneLineInput {
+  bucket_id: string
+  currency: string
+  amount: string
+  expected_return: string | null
+}
+
+export interface MilestoneInput {
+  name: string
+  target_date: ISODate
+  start_date: ISODate | null
+  note: string | null
+  lines: MilestoneLineInput[]
+}
+
+export type RowStatus = 'achieved' | 'missed' | 'open'
+export type Standing = 'ahead' | 'on_track' | 'behind'
+
+export interface Trajectory {
+  months: string[]
+  actual: (Decimal | null)[]
+  required: (Decimal | null)[]
+  projection_pace: (Decimal | null)[]
+  projection_return: (Decimal | null)[]
+}
+
+export interface BucketRef {
+  id: string
+  name: string
+  color: number
+}
+
+/** One bucket target of one milestone, measured. */
+export interface TargetRow {
+  id: string
+  milestone_id: string
+  milestone_name: string
+  target_date: ISODate
+  start_date: ISODate
+  bucket: BucketRef
+  currency: string
+  amount: Decimal
+  expected_return: Decimal | null
+  status: RowStatus
+  current: Decimal
+  progress_pct: Decimal
+  gap: Decimal
+  months_left: Decimal | null
+  need_flat: Decimal | null
+  need_with_return: Decimal | null
+  required_now: Decimal | null
+  standing: Standing | null
+  projected_pace_date: ISODate | null
+  projected_return_date: ISODate | null
+  value_on_date: Decimal | null
+  pace_3m: Decimal | null
+  pace_6m: Decimal | null
+  pace_12m: Decimal | null
+  trajectory: Trajectory
+}
+
+export interface CurrencyTotal {
+  currency: string
+  current: Decimal
+  amount: Decimal
+  progress_pct: Decimal
+  /** Per month over open rows: with expected return where set, else flat. */
+  need: Decimal | null
+  need_flat: Decimal | null
+}
+
+export interface MilestoneView {
+  id: string
+  name: string
+  target_date: ISODate
+  start_date: ISODate
+  note: string | null
+  past: boolean
+  months_left: Decimal | null
+  totals: CurrencyTotal[]
+  rows: TargetRow[]
+}
+
+export interface BucketMark {
+  row_id: string
+  milestone_id: string
+  name: string
+  target_date: ISODate
+  amount: Decimal
+  status: RowStatus
+}
+
+/** One bucket + currency across every milestone it appears in. */
+export interface BucketView {
+  bucket: BucketRef
+  currency: string
+  current: Decimal
+  pace_3m: Decimal | null
+  pace_6m: Decimal | null
+  pace_12m: Decimal | null
+  next_row_id: string | null
+  marks: BucketMark[]
+  trajectory: Trajectory
+}
+
+export interface Metrics {
+  /** Upcoming by date, then past (latest first). */
+  milestones: MilestoneView[]
+  buckets: BucketView[]
+}
+
+export type AccountType = 'checking' | 'savings' | 'fixed_deposit' | 'brokerage' | 'investment' | 'retirement' | 'asset' | 'other'
 
 export interface AccountSummary {
   id: string
   name: string
   institution: string | null
   account_type: AccountType
-  account_number_masked: string | null
   country: string | null
-  city: string | null
   currency: string
-  opened_on: ISODate | null
   closed_on: ISODate | null
   status: 'active' | 'closed'
-  tags: TagRef[]
+  /** Split in force today; [] = Unassigned. */
+  buckets: BucketShare[]
   balance: Decimal | null
   balance_as_of: ISODate | null
   previous_balance: Decimal | null
   delta: Decimal | null
   updated_at: ISODateTime
-}
-
-export interface Identifier {
-  id: string
-  label: string
-  value: string
 }
 
 export interface Link {
@@ -82,10 +263,6 @@ export interface Link {
 }
 
 export interface AccountDetail extends AccountSummary {
-  holder_name: string | null
-  notes: string | null
-  has_account_number: boolean
-  identifiers: Identifier[]
   links: Link[]
   portfolios: { id: string; name: string }[]
   created_at: ISODateTime
@@ -95,17 +272,11 @@ export interface AccountInput {
   name: string
   institution: string | null
   account_type: AccountType
-  holder_name: string | null
-  opened_on: ISODate | null
-  closed_on: ISODate | null
+  /** A date closes the account (it counts up to that day); null reopens it. */
+  closed_on?: ISODate | null
   country: string | null
-  city: string | null
   currency: string
-  notes: string | null
-  account_number?: string | null
-  identifiers: { label: string; value: string }[]
   links: { label: string; url: string }[]
-  tag_ids: string[]
   opening_balance?: { amount: string; as_of: ISODate; note?: string | null } | null
 }
 
@@ -132,11 +303,8 @@ export interface PortfolioSummary {
   provider: string | null
   currency: string
   account: { id: string; name: string } | null
-  opened_on: ISODate | null
   closed_on: ISODate | null
   status: 'active' | 'closed'
-  notes: string | null
-  tags: TagRef[]
   value: Decimal | null
   value_as_of: ISODate | null
   previous_value: Decimal | null
@@ -150,10 +318,9 @@ export interface PortfolioInput {
   provider: string | null
   currency: string
   account_id: string
-  opened_on: ISODate | null
-  closed_on: ISODate | null
-  notes: string | null
-  tag_ids: string[]
+  closed_on?: ISODate | null
+  /** The first holdings: a portfolio is only created together with them. */
+  snapshot?: { as_of: ISODate; note?: string | null; holdings: HoldingInput[] }
 }
 
 export interface Holding {
@@ -296,14 +463,35 @@ export interface CurrencyTopAssets {
   assets: TopAsset[]
 }
 
+export interface BucketRow {
+  /** null = Unassigned. */
+  bucket_id: string | null
+  values: Series
+  current: Decimal | null
+  /** Of the currency's total today (0-1). */
+  share: Decimal
+  change_1m: Decimal | null
+  /** Average change per month. */
+  pace_3m: Decimal | null
+  pace_6m: Decimal | null
+  pace_12m: Decimal | null
+  /** First value in the range → today, in percent. */
+  growth_pct: Decimal | null
+  sources: { account_id: string; name: string; percent: Decimal; value: Decimal }[]
+}
+
+export interface BucketOverview {
+  buckets: { id: string; name: string; color: number; archived: boolean }[]
+  currencies: { currency: string; rows: BucketRow[] }[]
+}
+
 export interface Overview {
   months: string[]
   currencies: CurrencySeries[]
-  tags: { tag: string; currencies: { currency: string; values: Series }[] }[]
+  buckets: BucketOverview
   allocation: {
     by_type: CurrencyAllocation[]
     by_asset_class: CurrencyAllocation[]
-    by_tag: CurrencyAllocation[]
   }
   top_assets: CurrencyTopAssets[]
   timeline: {
@@ -367,3 +555,195 @@ export type ScreenshotEvent =
   | { type: 'stage'; stage: 'reading' | 'read' | 'organising' | 'checking' | 'rechecking'; text: string }
   | { type: 'result'; result: ScreenshotResult }
   | { type: 'error'; message: string }
+
+// ── dashboard ────────────────────────────────────────────────────────────────
+
+export interface YearValue {
+  year: number
+  value: Decimal
+  as_of: ISODate
+}
+
+export interface TopEntry {
+  kind: 'account' | 'holding'
+  name: string
+  symbol: string | null
+  held_in: string[]
+  value: Decimal
+  share: Decimal
+  bucket_ids: (string | null)[]
+}
+
+export interface TopStock {
+  symbol: string
+  name: string | null
+  held_in: string[]
+  value: Decimal
+  cost: Decimal | null
+  gain_pct: Decimal | null
+  share: Decimal
+}
+
+export interface GridRow {
+  account_id: string
+  name: string
+  cells: (Decimal | null)[]
+  total: Decimal
+}
+
+export interface BucketGrid {
+  buckets: (BucketRef | null)[]
+  rows: GridRow[]
+  totals: Decimal[]
+}
+
+export interface CurrencyDashboard {
+  currency: string
+  net_worth: Decimal
+  account_count: number
+  yearly: YearValue[]
+  top_entries: TopEntry[]
+  top_stocks: TopStock[]
+  grid: BucketGrid
+}
+
+export interface DashboardAlert {
+  kind: 'rebalance' | 'intent' | 'concentration'
+  currency: string
+  bucket: BucketRef | null
+  amount: Decimal | null
+  other_bucket: BucketRef | null
+  other_amount: Decimal | null
+  expected_return: Decimal | null
+  label: 'fixed_deposits' | 'cash' | 'deposits_and_cash' | null
+  symbol: string | null
+  share: Decimal | null
+}
+
+export interface CheckinItem {
+  kind: 'balance' | 'holdings'
+  id: string
+  account_id: string | null
+  name: string
+  currency: string
+  last: ISODate | null
+}
+
+export interface Dashboard {
+  today: ISODate
+  next_milestone: { id: string; name: string; target_date: ISODate } | null
+  currencies: CurrencyDashboard[]
+  attention: DashboardAlert[]
+  checkin: { last: ISODate | null; items: CheckinItem[] }
+}
+
+// ── wealth estimator ─────────────────────────────────────────────────────────
+
+export type ScenarioKey = 'conservative' | 'balanced' | 'aggressive'
+export const SCENARIO_KEYS: ScenarioKey[] = ['conservative', 'balanced', 'aggressive']
+
+export interface PoolAccount {
+  id: string
+  name: string
+  institution: string | null
+  account_type: string
+  currency: string
+  value: Decimal
+  fixed: boolean
+}
+
+export interface EstimatorPool {
+  accounts: PoolAccount[]
+  currencies: string[]
+}
+
+export interface InquiryInput {
+  monthly_expenses: string
+  currency: string
+  withdrawal_rate_pct: string
+  excluded_account_ids: string[]
+}
+
+export interface InquirySummary {
+  id: string
+  created_at: string
+  monthly_expenses: Decimal
+  currency: string
+  withdrawal_rate_pct: number
+  pool: number
+  fi_years: Record<ScenarioKey, number | null>
+  fi_today: number
+  progress: number
+  fi_age: number | null
+  structure: number
+  model: string
+  changes: string[]
+  targets: Record<string, number>
+  labels: Record<string, string>
+}
+
+export type EffectKind = 'return_pct' | 'inflation_pct' | 'pool_pct' | 'expenses_pct' | 'none'
+
+export interface InquiryScenario {
+  return_pct: number
+  return_rebalanced_pct: number
+  /** Growth after inflation. */
+  real_growth_pct: number
+  /** After retiring, the growth pays for the withdrawals: the pool never runs out. */
+  preserved: boolean
+  /** Real growth minus the withdrawal rate (how fast the pool still grows, or shrinks). */
+  surplus_pct: number
+  /** Years the pool lasts after retiring when not preserved. */
+  lasts_years: number | null
+  fi_today: number
+  fi_nominal: number | null
+  years: number | null
+  fi_date: string | null
+  fi_year: number | null
+  fi_age: number | null
+  rebalanced_years: number | null
+  rebalanced_year: number | null
+  progress: number
+  curve: { year: number; as_is: number; rebalanced: number }[]
+  rebalance: { key: string; label: string; now_pct: number; target_pct: number; move: number }[]
+  milestones: { year: number; focus: string; amount: number; fi: boolean }[]
+  change_years: (number | null)[]
+  risk_years: (number | null)[]
+}
+
+export interface InquiryResult {
+  currency: string
+  today: ISODate
+  withdrawal_rate_pct: number
+  monthly_expenses: number
+  age: number | null
+  pool: number
+  pool_by_currency: { currency: string; value: number; rate: number; value_in: number }[]
+  inflation: { currency: string; rate_pct: number; period: string; index: string }[]
+  expense_inflation_pct: number
+  fx: { currency: string; value_in_expense_currency: number; drift_pct: number }[]
+  scenarios: Record<ScenarioKey, InquiryScenario>
+  structure: { overall: number; diversification: number; liquidity: number; growth_mix: number; currency_spread: number }
+  keep: string[]
+  changes: { title: string; detail: string; effect: { kind: EffectKind; value: number }; label: string | null }[]
+  risks: { severity: 'high' | 'medium' | 'low'; title: string; detail: string; stress: { kind: EffectKind; value: number }; label: string }[]
+  excluded: { name: string; currency: string; value: number; reason: 'fixed' | 'unticked' }[]
+}
+
+export interface InquiryDetail {
+  id: string
+  created_at: string
+  monthly_expenses: Decimal
+  currency: string
+  model: string
+  cost: Decimal
+  result: InquiryResult
+  previous: InquirySummary | null
+}
+
+export type InquiryStage = 'snapshot' | 'review' | 'checks' | 'compute'
+
+export type InquiryEvent =
+  | { type: 'stage'; stage: InquiryStage; status: 'running' | 'done' | 'retry'; problems?: string[] }
+  | { type: 'result'; id: string; cost: number }
+  | { type: 'error'; message: string; problems?: string[] }

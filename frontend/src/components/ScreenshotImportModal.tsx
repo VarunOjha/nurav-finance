@@ -25,7 +25,8 @@ export interface ImportedHolding {
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
-  portfolioId: string
+  /** null: the portfolio is created later, with these holdings (read with `currency`). */
+  portfolioId: string | null
   currency: string
   /** The snapshot date currently on the page. */
   asOf: string
@@ -95,7 +96,7 @@ const CHECK_MARK: Record<ScreenshotCheck['status'], string> = { ok: '✓', warn:
 
 // Screenshots → reader → organiser → checks (→ re-read) → this review. The
 // person edits and confirms; accepting fills the snapshot table, and they
-// still press "Save snapshot". The images are never stored.
+// still press "Save snapshot" ("Save portfolio & holdings" for a new portfolio). The images are never stored.
 export function ScreenshotImportModal({ open, onOpenChange, portfolioId, currency, asOf, onAccept, initialFiles }: Props) {
   const [phase, setPhase] = useState<Phase>('pick')
   const [shots, setShots] = useState<Shot[]>([])
@@ -205,7 +206,7 @@ export function ScreenshotImportModal({ open, onOpenChange, portfolioId, currenc
       }
     }
     try {
-      await importScreenshots(portfolioId, shots.map((s) => s.file), asOf, onEvent, ctrl.signal)
+      await importScreenshots(portfolioId ?? { currency }, shots.map((s) => s.file), asOf, onEvent, ctrl.signal)
       if (!finished && !ctrl.signal.aborted) {
         setError('The server stopped before finishing. Try again.')
         setPhase('pick')

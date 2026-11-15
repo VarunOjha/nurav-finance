@@ -26,6 +26,7 @@ import {
   signedMoney,
   signedPercent,
   toNumber,
+  todayISO,
 } from '../lib/format'
 import type { HoldingDiff, SnapshotSummary } from '../types/api'
 
@@ -48,7 +49,8 @@ export default function PortfolioDetailPage() {
   const navigate = useNavigate()
   const portfolio = usePortfolio(portfolioId)
   const snapshots = useSnapshots(portfolioId)
-  const { remove, deleteSnapshot } = usePortfolioMutations()
+  const { remove, deleteSnapshot, update } = usePortfolioMutations()
+  const [closeOpen, setCloseOpen] = useState(false)
   const theme = useChartTheme()
 
   const [selected, setSelected] = useState<string | null>(null)
@@ -188,25 +190,36 @@ export default function PortfolioDetailPage() {
             <Button variant="ghost" className="hover:text-error" onClick={() => setConfirmDelete(true)}>
               Delete
             </Button>
-            {p.status !== 'closed' && <Button onClick={() => navigate(`/portfolios/${p.id}/snapshots/new`)}>+ Record snapshot</Button>}
+            {p.status === 'closed' ? (
+              <Button variant="ghost" isLoading={update.isPending} onClick={() => update.mutate({ id: p.id, body: { closed_on: null } })}>
+                Reopen
+              </Button>
+            ) : (
+              <Button variant="ghost" onClick={() => setCloseOpen(true)}>
+                Close
+              </Button>
+            )}
+            {p.status !== 'closed' && <Button onClick={() => navigate(`/portfolios/${p.id}/snapshots/new`)}>+ Record holdings</Button>}
           </>
         }
       />
 
-      {p.tags.length > 0 && (
-        <div className="flex gap-1.5 flex-wrap -mt-2">
-          {p.tags.map((t) => (
-            <Chip key={t.id}>{t.name}</Chip>
-          ))}
-        </div>
+      {p.account && (
+        <p className="font-mono text-[10px] text-ink-muted -mt-2">
+          Buckets follow the split of{' '}
+          <Link to={`/accounts/${p.account.id}`} className="underline hover:text-ink">
+            {p.account.name}
+          </Link>
+          .
+        </p>
       )}
 
       {snapshots.isLoading ? (
         <Loading />
       ) : snaps.length === 0 ? (
         <Empty title="No snapshots yet">
-          <span>Record the holdings you have today — or backdate one to start the history.</span>
-          {p.status !== 'closed' && <Button onClick={() => navigate(`/portfolios/${p.id}/snapshots/new`)}>+ Record snapshot</Button>}
+          <span>Its snapshots were deleted. Record the holdings you have today — or backdate one to start the history again.</span>
+          {p.status !== 'closed' && <Button onClick={() => navigate(`/portfolios/${p.id}/snapshots/new`)}>+ Record holdings</Button>}
         </Empty>
       ) : (
         <>
@@ -449,6 +462,16 @@ export default function PortfolioDetailPage() {
         onConfirm={doDelete}
         isLoading={remove.isPending}
         error={deleteError}
+      />
+      <ConfirmDialog
+        open={closeOpen}
+        onOpenChange={setCloseOpen}
+        title={`Close ${p.name}?`}
+        body="It stays in your history up to today and stops counting after that. You can reopen it any time."
+        confirmLabel="Close portfolio"
+        onConfirm={() => update.mutate({ id: p.id, body: { closed_on: todayISO() } }, { onSuccess: () => setCloseOpen(false) })}
+        isLoading={update.isPending}
+        error={update.error ? apiErrorMessage(update.error) : null}
       />
       <ConfirmDialog
         open={!!snapToDelete}

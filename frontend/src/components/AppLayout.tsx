@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useSearchParams } from 'react-router-dom'
 import * as Popover from '@radix-ui/react-popover'
-import { BarChart3, Briefcase, Landmark, Menu, Palette, UserCircle } from 'lucide-react'
+import { BarChart3, Briefcase, Goal, Landmark, LayoutDashboard, Menu, Palette, Telescope, UserCircle } from 'lucide-react'
 import { Logo } from './Logo'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { Breadcrumbs } from './Breadcrumbs'
@@ -13,9 +13,12 @@ import type { ProfileSection } from './ProfileModal'
 const ProfileModal = lazy(() => import('./ProfileModal'))
 
 const NAV = [
+  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/accounts', label: 'Accounts', icon: Landmark },
   { to: '/portfolios', label: 'Portfolios', icon: Briefcase },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
+  { to: '/metrics', label: 'Metrics', icon: Goal },
+  { to: '/estimator', label: 'Wealth estimator', icon: Telescope },
 ] as const
 
 // Baked in at image build time (--build-arg APP_VERSION=v1.0.0); local builds show "dev".
@@ -88,10 +91,10 @@ export function AppLayout() {
             >
               <Menu className="w-7 h-7" aria-hidden="true" />
             </button>
-            <NavLink to="/accounts" className="focus:outline-none hidden sm:inline-flex">
+            <NavLink to="/dashboard" className="focus:outline-none hidden sm:inline-flex">
               <Logo size="lg" />
             </NavLink>
-            <NavLink to="/accounts" className="focus:outline-none sm:hidden" aria-label="Nurav Finance home">
+            <NavLink to="/dashboard" className="focus:outline-none sm:hidden" aria-label="Nurav Finance home">
               <Logo size="sm" />
             </NavLink>
           </div>

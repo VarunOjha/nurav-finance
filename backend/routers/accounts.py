@@ -6,11 +6,11 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from database import get_db, utcnow
 from dependencies import get_current_workspace
-from models import Account, AccountIdentifier, AccountLink, AccountTag, BalanceEntry, Portfolio, Workspace
+from models import Account, AccountLink, BalanceEntry, Portfolio, Workspace
 from models.account import PORTFOLIO_ACCOUNT_TYPES
 from schemas.account import (
     AccountCreate,
@@ -20,17 +20,15 @@ from schemas.account import (
     BalanceCreate,
     BalanceEntryOut,
     BalanceHistory,
-    IdentifierIn,
     LinkIn,
     MonthPoint,
-    RevealedNumber,
 )
+from schemas.buckets import BucketShare
 from schemas.common import latest_allowed_date
-from schemas.workspaces import TagRef
 from services import soft_delete
-from services.access import get_account, owned_tags
-from services.crypto import decrypt_account_number, encrypt_account_number
+from services.access import get_account
 from services.ledger import Point, Timeline, effective_ids, month_end, month_key, months_between
+from services.splits import SplitTimeline, load_splits
 
 router = APIRouter()
 
@@ -50,11 +48,18 @@ def _entries_by_account(db: Session, account_ids: list[uuid.UUID]) -> dict[uuid.
     return grouped
 
 
-def _mask(account: Account) -> str | None:
-    return f"••••{account.account_number_last4}" if account.account_number_last4 else None
+def _shares(splits: SplitTimeline) -> list[BucketShare]:
+    """The split in force today; [] = Unassigned."""
+    current = splits.at(date.today())
+    if current is None:
+        return []
+    return [
+        BucketShare(bucket_id=line.bucket_id, name=line.bucket.name, color=line.bucket.color, percent=line.percent)
+        for line in sorted(current.ref.lines, key=lambda x: x.position)
+    ]
 
 
-def _summary(account: Account, entries: list[BalanceEntry]) -> dict:
+def _summary(account: Account, entries: list[BalanceEntry], splits: SplitTimeline) -> dict:
     timeline = _timeline(entries)
     latest = timeline.latest()
     previous = timeline.before(latest) if latest else None
@@ -63,14 +68,11 @@ def _summary(account: Account, entries: list[BalanceEntry]) -> dict:
         name=account.name,
         institution=account.institution,
         account_type=account.account_type,
-        account_number_masked=_mask(account),
         country=account.country,
-        city=account.city,
         currency=account.currency,
-        opened_on=account.opened_on,
         closed_on=account.closed_on,
         status="closed" if account.closed_on else "active",
-        tags=[TagRef.model_validate(link.tag) for link in account.tag_links],
+        buckets=_shares(splits),
         balance=latest.value if latest else None,
         balance_as_of=latest.as_of if latest else None,
         previous_balance=previous.value if previous else None,
@@ -83,38 +85,16 @@ def _detail(db: Session, account: Account) -> AccountDetail:
     entries = _entries_by_account(db, [account.id])[account.id]
     portfolios = db.scalars(select(Portfolio).where(Portfolio.account_id == account.id).order_by(Portfolio.name)).all()
     return AccountDetail(
-        **_summary(account, entries),
-        holder_name=account.holder_name,
-        notes=account.notes,
-        has_account_number=account.account_number_enc is not None,
-        identifiers=account.identifiers,
+        **_summary(account, entries, load_splits(db, [account.id])[account.id]),
         links=account.links,
         portfolios=portfolios,
         created_at=account.created_at,
     )
 
 
-def _check_dates(opened_on: date | None, closed_on: date | None) -> None:
-    if opened_on and closed_on and closed_on < opened_on:
-        raise HTTPException(status_code=422, detail="Closed date can't be before the opened date")
-
-
 def _check_entry_date(account: Account, as_of: date) -> None:
-    if account.opened_on and as_of < account.opened_on:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Date is before the account was opened ({account.opened_on.isoformat()}) — " "change the opened date first if this is right",
-        )
     if account.closed_on and as_of > account.closed_on:
         raise HTTPException(status_code=422, detail="Date is after the account was closed")
-
-
-def _replace_identifiers(db: Session, account: Account, items: list[IdentifierIn]) -> None:
-    now = utcnow()
-    for old in account.identifiers:
-        old.deleted_at = now
-    for i, item in enumerate(items):
-        db.add(AccountIdentifier(account_id=account.id, label=item.label.strip(), value=item.value.strip(), position=i))
 
 
 def _replace_links(db: Session, account: Account, items: list[LinkIn]) -> None:
@@ -123,17 +103,6 @@ def _replace_links(db: Session, account: Account, items: list[LinkIn]) -> None:
         old.deleted_at = now
     for i, item in enumerate(items):
         db.add(AccountLink(account_id=account.id, label=item.label.strip(), url=str(item.url), position=i))
-
-
-def _replace_tags(db: Session, workspace: Workspace, account: Account, tag_ids: list[uuid.UUID]) -> None:
-    wanted = {t.id for t in owned_tags(db, workspace, tag_ids)}
-    now = utcnow()
-    current = {link.tag_id: link for link in account.tag_links}
-    for tag_id, link in current.items():
-        if tag_id not in wanted:
-            link.deleted_at = now
-    for tag_id in wanted - current.keys():
-        db.add(AccountTag(account_id=account.id, tag_id=tag_id))
 
 
 def _load(db: Session, workspace: Workspace, account_id: uuid.UUID) -> Account:
@@ -150,35 +119,23 @@ def list_accounts(
     workspace: Workspace = Depends(get_current_workspace),
     db: Session = Depends(get_db),
 ) -> list[AccountSummary]:
-    stmt = (
-        select(Account)
-        .where(Account.workspace_id == workspace.id)
-        .options(selectinload(Account.tag_links).selectinload(AccountTag.tag))
-        .order_by(Account.closed_on.is_not(None), Account.currency, Account.name)
-    )
+    stmt = select(Account).where(Account.workspace_id == workspace.id).order_by(Account.closed_on.is_not(None), Account.currency, Account.name)
     if status_filter == "active":
         stmt = stmt.where(Account.closed_on.is_(None))
     elif status_filter == "closed":
         stmt = stmt.where(Account.closed_on.is_not(None))
     accounts = db.scalars(stmt).all()
     entries = _entries_by_account(db, [a.id for a in accounts])
-    return [AccountSummary(**_summary(a, entries.get(a.id, []))) for a in accounts]
+    splits = load_splits(db, [a.id for a in accounts])
+    return [AccountSummary(**_summary(a, entries.get(a.id, []), splits[a.id])) for a in accounts]
 
 
 @router.post("", response_model=AccountDetail, status_code=status.HTTP_201_CREATED)
 def create_account(body: AccountCreate, workspace: Workspace = Depends(get_current_workspace), db: Session = Depends(get_db)) -> AccountDetail:
-    _check_dates(body.opened_on, body.closed_on)
-    account = Account(
-        workspace_id=workspace.id,
-        **body.model_dump(include=set(AccountCreate.model_fields) - {"account_number", "identifiers", "links", "tag_ids", "opening_balance"}),
-    )
-    if body.account_number and body.account_number.strip():
-        account.account_number_enc, account.account_number_last4 = encrypt_account_number(body.account_number)
+    account = Account(workspace_id=workspace.id, **body.model_dump(include=set(AccountCreate.model_fields) - {"links", "opening_balance"}))
     db.add(account)
     db.flush()
-    _replace_identifiers(db, account, body.identifiers)
     _replace_links(db, account, body.links)
-    _replace_tags(db, workspace, account, body.tag_ids)
     if body.opening_balance:
         _check_entry_date(account, body.opening_balance.as_of)
         db.add(BalanceEntry(account_id=account.id, **body.opening_balance.model_dump()))
@@ -198,14 +155,12 @@ def update_account(
     account = get_account(db, workspace, account_id)
     data = body.model_dump(exclude_unset=True)
 
-    opened_on = data.get("opened_on", account.opened_on)
     closed_on = data.get("closed_on", account.closed_on)
-    _check_dates(opened_on, closed_on)
+    if closed_on and closed_on > latest_allowed_date():
+        raise HTTPException(status_code=422, detail="Closing date cannot be in the future")
     entries = _entries_by_account(db, [account.id])[account.id]
     if entries:
         days = [e.as_of for e in entries]
-        if opened_on and min(days) < opened_on:
-            raise HTTPException(status_code=422, detail="There are balance entries before that opened date")
         if closed_on and max(days) > closed_on:
             raise HTTPException(status_code=422, detail="There are balance entries after that closed date")
         if data.get("currency") and data["currency"] != account.currency:
@@ -216,22 +171,12 @@ def update_account(
             del data[field]  # required columns can't be cleared
     new_type = data.get("account_type", account.account_type)
     if new_type not in PORTFOLIO_ACCOUNT_TYPES and db.scalar(select(Portfolio.id).where(Portfolio.account_id == account.id).limit(1)):
-        raise HTTPException(status_code=409, detail="This account has portfolios, so it stays a brokerage account — delete its portfolios first")
-    for field in ("name", "institution", "account_type", "holder_name", "opened_on", "closed_on", "country", "city", "currency", "notes"):
+        raise HTTPException(status_code=409, detail="This account has a portfolio, so it stays a brokerage account — delete its portfolio first")
+    for field in ("name", "institution", "account_type", "closed_on", "country", "currency"):
         if field in data:
             setattr(account, field, data[field])
-    if "account_number" in data:
-        number = (data["account_number"] or "").strip()
-        if number:
-            account.account_number_enc, account.account_number_last4 = encrypt_account_number(number)
-        else:
-            account.account_number_enc = account.account_number_last4 = None
-    if body.identifiers is not None:
-        _replace_identifiers(db, account, body.identifiers)
     if body.links is not None:
         _replace_links(db, account, body.links)
-    if body.tag_ids is not None:
-        _replace_tags(db, workspace, account, body.tag_ids)
     account.updated_at = utcnow()
     db.commit()
     return _detail(db, _load(db, workspace, account.id))
@@ -242,14 +187,6 @@ def delete_account(account_id: uuid.UUID, workspace: Workspace = Depends(get_cur
     account = get_account(db, workspace, account_id)
     soft_delete.delete_account(db, account.id)
     db.commit()
-
-
-@router.post("/{account_id}/reveal", response_model=RevealedNumber)
-def reveal_number(account_id: uuid.UUID, workspace: Workspace = Depends(get_current_workspace), db: Session = Depends(get_db)) -> RevealedNumber:
-    account = get_account(db, workspace, account_id)
-    if not account.account_number_enc:
-        raise HTTPException(status_code=404, detail="No account number stored")
-    return RevealedNumber(account_number=decrypt_account_number(account.account_number_enc))
 
 
 # ── balances (append-only) ────────────────────────────────────────────────────

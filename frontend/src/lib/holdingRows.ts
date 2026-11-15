@@ -1,4 +1,4 @@
-// Editable holdings rows, shared by the Record snapshot page and the Add portfolio
+// Editable holdings rows, shared by the Record holdings page and the Add portfolio
 // modal's Manual entry tab. Rows hold the plain strings typed; `rowsToHoldings`
 // checks them and builds the API payload.
 import { parseAmount } from './amount'

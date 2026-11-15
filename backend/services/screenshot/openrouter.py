@@ -77,11 +77,33 @@ def _friendly(status: int, body: str) -> str:
     return f"OpenRouter had a problem (HTTP {status}). Try again shortly."
 
 
+SCREENSHOT_CUTOFF = (
+    "These screenshots hold more rows than the model can write out in one answer. "
+    "Split them: import the first screens, save, then record the rest."
+)
+
+
 class OpenRouter:
-    def __init__(self, transport: httpx.AsyncBaseTransport | None = None, api_key: str | None = None, model: str | None = None):
+    """`feature` names what needs the key in the "missing key" message; `cutoff` is said when even
+    the full output budget can't hold the answer."""
+
+    def __init__(
+        self,
+        transport: httpx.AsyncBaseTransport | None = None,
+        api_key: str | None = None,
+        model: str | None = None,
+        feature: str = "Screenshot import",
+        cutoff: str = SCREENSHOT_CUTOFF,
+    ):
         self.transport = transport
         self.api_key = api_key if api_key is not None else settings.openrouter_api_key
         self.model = model or settings.screenshot_model
+        self.feature = feature
+        self.cutoff = cutoff
+
+    @property
+    def missing_key(self) -> str:
+        return f"{self.feature} needs an OpenRouter key: add OPENROUTER_API_KEY to the nurav-finance vault app and restart."
 
     @property
     def enabled(self) -> bool:
@@ -93,7 +115,7 @@ class OpenRouter:
         A reply cut off at the token budget (a long list of holdings) is retried once
         with the model's full output budget before giving up."""
         if not self.enabled:
-            raise LLMError("Screenshot import needs an OpenRouter key: add OPENROUTER_API_KEY to the nurav-finance vault app and restart.")
+            raise LLMError(self.missing_key)
         name = tool["function"]["name"]
         fn = tool["function"]
         schema = strict_schema(fn["parameters"])
@@ -126,10 +148,7 @@ class OpenRouter:
                 if finish == "length":
                     if budget != budgets[-1]:
                         continue  # cut off mid-answer: once more with the full budget
-                    raise LLMError(
-                        "These screenshots hold more rows than the model can write out in one answer. "
-                        "Split them: import the first screens, save, then record the rest."
-                    ) from exc
+                    raise LLMError(self.cutoff) from exc
                 raise LLMError("The model didn't return a usable answer. Try again.") from exc
             return ToolResult(args=args, cost=cost, model=data.get("model") or self.model)
         raise AssertionError("unreachable")

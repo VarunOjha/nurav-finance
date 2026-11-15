@@ -383,3 +383,25 @@ def test_a_reply_cut_off_at_the_full_budget_says_to_split():
     llm = OpenRouter(transport=httpx.MockTransport(lambda r: _cut_off()), api_key="k", model="m")
     with pytest.raises(LLMError, match="Split them"):
         asyncio.run(llm.tool_call("sys", "hi", _TOOL))
+
+
+def test_reading_for_a_portfolio_not_created_yet(api: Api, scripted):
+    """Add portfolio → From screenshots reads before the portfolio exists (it's created with the holdings)."""
+    holding = {
+        "symbol": "INFY",
+        "symbol_basis": "shown",
+        "asset_class": "stock",
+        "quantity": "10",
+        "current_price": "1500",
+        "value": "15,000",
+        "sources": ["s1r1"],
+    }
+    scripted(Script([holding]))
+    files = [("files", ("shot.png", _png(900, 1600), "image/png"))]
+    res = api.client.post("/api/portfolios/screenshot", files=files, data={"currency": "INR"}, headers=api.headers())
+    assert res.status_code == 200, res.text
+    events = [json.loads(line) for line in res.text.splitlines() if line.strip()]
+    assert events[-1]["type"] == "result" and [r["symbol"] for r in events[-1]["result"]["rows"]] == ["INFY"]
+    assert api.get("/api/portfolios").json() == []  # nothing created
+    bad = api.client.post("/api/portfolios/screenshot", files=files, data={"currency": "rupees"}, headers=api.headers())
+    assert bad.status_code == 422

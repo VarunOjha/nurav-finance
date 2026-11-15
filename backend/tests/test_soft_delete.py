@@ -30,15 +30,15 @@ def test_deleted_entry_is_ignored_everywhere(api: Api):
 
 
 def test_deleting_account_cascades_and_hides_it(api: Api):
-    tags = api.tags()
-    acc = api.account(account_type="brokerage", tag_ids=[tags["savings"]], identifiers=[{"label": "IFSC", "value": "X"}], account_number="123456")
+    acc = api.account(account_type="brokerage", links=[{"label": "Site", "url": "https://example.com"}])
     api.balance(acc["id"], "50", "2024-01-01")
     port = api.portfolio(account_id=acc["id"])
+    api.split(acc["id"], {"Growth": 100})
     assert api.delete(f"/api/accounts/{acc['id']}").status_code == 204
 
     assert api.get("/api/accounts").json() == []
     assert api.get(f"/api/accounts/{acc['id']}").status_code == 404
-    assert {t["name"]: t["account_count"] for t in api.get("/api/tags").json()}["savings"] == 0
+    assert next(b for b in api.get("/api/buckets").json() if b["name"] == "Growth")["current_accounts"] == []
     assert api.workspaces()[0]["account_count"] == 0
     # Its portfolio belongs to it, so it goes too.
     assert api.get(f"/api/portfolios/{port['id']}").status_code == 404
@@ -49,8 +49,9 @@ def test_deleting_account_cascades_and_hides_it(api: Api):
     with engine.connect() as conn:
         live = conn.execute(
             text(
-                "SELECT (SELECT count(*) FROM account_identifiers WHERE deleted_at IS NULL)"
-                " + (SELECT count(*) FROM account_tags WHERE deleted_at IS NULL)"
+                "SELECT (SELECT count(*) FROM account_links WHERE deleted_at IS NULL)"
+                " + (SELECT count(*) FROM account_splits WHERE deleted_at IS NULL)"
+                " + (SELECT count(*) FROM account_split_lines WHERE deleted_at IS NULL)"
                 " + (SELECT count(*) FROM balance_entries WHERE deleted_at IS NULL)"
             )
         ).scalar_one()
@@ -68,14 +69,14 @@ def test_deleted_rows_do_not_block_names_or_dates(api: Api):
     assert api.delete(f"/api/portfolios/{port['id']}/snapshots/{snap['id']}").status_code == 204
     api.snapshot(port["id"], "2024-06-30", [("AAPL", 2, 100, "stock")])
 
-    tag = api.post("/api/tags", json={"name": "travel"}).json()
-    api.delete(f"/api/tags/{tag['id']}")
-    assert api.post("/api/tags", json={"name": "travel"}).status_code == 201
+    bucket = api.post("/api/buckets", json={"name": "Travel"}).json()
+    api.delete(f"/api/buckets/{bucket['id']}")
+    assert api.post("/api/buckets", json={"name": "travel"}).status_code == 201
 
 
 def test_relationship_loads_skip_deleted_children(api: Api):
-    acc = api.account(identifiers=[{"label": "A", "value": "1"}])
-    api.patch(f"/api/accounts/{acc['id']}", json={"identifiers": [{"label": "B", "value": "2"}]})
+    acc = api.account(links=[{"label": "A", "url": "https://a.example.com"}])
+    api.patch(f"/api/accounts/{acc['id']}", json={"links": [{"label": "B", "url": "https://b.example.com"}]})
     with SessionLocal() as db:
         account = db.scalar(select(Account))
-        assert [i.label for i in account.identifiers] == ["B"]
+        assert [link.label for link in account.links] == ["B"]

@@ -6,45 +6,41 @@ from database import engine
 from tests.conftest import Api
 
 
-def test_account_number_is_encrypted_masked_and_revealable(api: Api):
+def test_only_planning_fields_are_kept(api: Api):
     acc = api.account(
         name="SBI Savings",
         currency="INR",
-        account_number="30000005521",
-        identifiers=[{"label": "IFSC", "value": "SBIN0001234"}],
+        country="IN",
+        institution="State Bank of India",
         links=[{"label": "Net banking", "url": "https://example.com/login"}],
+        account_number="30000005521",  # no longer stored: ignored
+        holder_name="Someone",
     )
-    assert acc["account_number_masked"] == "••••5521"
-    assert "account_number" not in acc
-    assert [i["label"] for i in acc["identifiers"]] == ["IFSC"]
+    for gone in ("account_number_masked", "identifiers", "holder_name", "opened_on", "city", "notes"):
+        assert gone not in acc
+    assert [link["label"] for link in acc["links"]] == ["Net banking"]
     with engine.connect() as conn:
-        stored = conn.execute(text("SELECT account_number_enc FROM accounts")).scalar_one()
-    assert "30000005521" not in stored
-    assert api.post(f"/api/accounts/{acc['id']}/reveal").json() == {"account_number": "30000005521"}
+        columns = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'accounts'")).scalars().all()
+        assert not {"account_number_enc", "holder_name", "opened_on", "city", "notes"} & set(columns)
+        assert conn.execute(text("SELECT to_regclass('account_identifiers')")).scalar_one() is None
+    res = api.patch(f"/api/accounts/{acc['id']}", json={"links": [{"label": "App", "url": "https://example.com/app"}]})
+    assert [link["label"] for link in res.json()["links"]] == ["App"]
 
 
-def test_update_replaces_lists_and_clears_number(api: Api):
-    tags = api.tags()
-    acc = api.account(
-        account_number="1234", tag_ids=[tags["savings"]], identifiers=[{"label": "IFSC", "value": "X"}, {"label": "MICR", "value": "Y"}]
-    )
-    res = api.patch(
-        f"/api/accounts/{acc['id']}",
-        json={
-            "account_number": "",
-            "tag_ids": [tags["trading"]],
-            "identifiers": [{"label": "SWIFT", "value": "Z"}],
-        },
-    )
-    assert res.status_code == 200, res.text
-    body = res.json()
-    assert body["account_number_masked"] is None and body["has_account_number"] is False
-    assert [t["name"] for t in body["tags"]] == ["trading"]
-    assert [i["label"] for i in body["identifiers"]] == ["SWIFT"]
+def test_close_and_reopen(api: Api):
+    acc = api.account()
+    api.balance(acc["id"], "10", "2024-02-01")
+    url = f"/api/accounts/{acc['id']}"
+    assert api.patch(url, json={"closed_on": "2024-01-15"}).status_code == 422  # entries after it
+    future = (date.today() + timedelta(days=3)).isoformat()
+    assert api.patch(url, json={"closed_on": future}).status_code == 422
+    closed = api.patch(url, json={"closed_on": date.today().isoformat()}).json()
+    assert closed["status"] == "closed"
+    assert api.patch(url, json={"closed_on": None}).json()["status"] == "active"
 
 
 def test_backdated_entries_drive_latest_and_month_end(api: Api):
-    acc = api.account(opened_on="2024-01-01")
+    acc = api.account()
     api.balance(acc["id"], "100", "2024-03-15")
     api.balance(acc["id"], "300", "2024-05-10")
     # Recorded later, but dated in between: becomes April's value, not the latest.
@@ -74,19 +70,16 @@ def test_same_day_entries_last_recorded_wins(api: Api):
 
 
 def test_entry_date_rules(api: Api):
-    acc = api.account(opened_on="2024-01-10", closed_on="2024-12-31")
+    acc = api.account(closed_on="2024-12-31")
     future = (date.today() + timedelta(days=3)).isoformat()
     bad = [
-        ("2024-01-01", "before opened"),
         ("2025-01-02", "after closed"),
         (future, "future"),
     ]
     for as_of, _ in bad:
         res = api.post(f"/api/accounts/{acc['id']}/balances", json={"amount": "1", "as_of": as_of})
         assert res.status_code == 422, as_of
-    api.balance(acc["id"], "1", "2024-02-01")
-    # Moving the opened date past existing entries is refused.
-    assert api.patch(f"/api/accounts/{acc['id']}", json={"opened_on": "2024-03-01"}).status_code == 422
+    api.balance(acc["id"], "1", "1999-02-01")  # any past date: there is no opened date
     # Currency is locked once balances exist.
     assert api.patch(f"/api/accounts/{acc['id']}", json={"currency": "EUR"}).status_code == 409
 

@@ -21,6 +21,14 @@ describe('crumbsFor', () => {
     ])
   })
 
+  it("walks account → its new portfolio's first holdings", () => {
+    expect(trail('/accounts/a1/portfolio/new')).toEqual([
+      { key: 'accounts', to: '/accounts' },
+      { key: 'a1', to: '/accounts/a1' },
+      { key: 'new', to: undefined },
+    ])
+  })
+
   it('has nothing for unknown paths', () => {
     expect(trail('/')).toEqual([])
     expect(trail('/login')).toEqual([])

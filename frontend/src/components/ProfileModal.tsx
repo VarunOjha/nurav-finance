@@ -2,24 +2,24 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Pencil, Trash2 } from 'lucide-react'
 import { apiErrorMessage } from '../api/client'
 import { authApi } from '../api/endpoints'
+import { BucketsSection } from './BucketsSection'
 import { ThemePicker } from './ThemePicker'
 import { Button } from './ui/Button'
 import { DateField } from './ui/DateField'
 import { FormError, Input, PasswordInput, Select } from './ui/Field'
 import { ConfirmDialog, Modal } from './ui/Modal'
-import { Chip, Loading, Table, onlyBelow, showFrom, td, th } from './ui/Primitives'
+import { Loading, Table, onlyBelow, showFrom, td, th } from './ui/Primitives'
 import { useAuth } from '../context/AuthContext'
 import { useWorkspace } from '../context/WorkspaceContext'
-import { useTagMutations, useTags, useWorkspaceMutations } from '../hooks/queries'
+import { useWorkspaceMutations } from '../hooks/queries'
 import { cn } from '../lib/cn'
 import { formatDate, GENDER_LABELS, todayISO } from '../lib/format'
-import { birthDateError, EARLIEST_BIRTH_DATE, emailError, phoneError } from '../lib/validate'
-import type { Gender, Tag, Workspace } from '../types/api'
+import { birthDateError, EARLIEST_BIRTH_DATE, emailError } from '../lib/validate'
+import type { Gender, Workspace } from '../types/api'
 
 const sectionTitle = 'font-mono text-[10px] font-medium uppercase tracking-widest text-ink-muted'
 const iconBtn = 'inline-flex items-center justify-center w-9 h-9 text-ink-muted hover:text-ink focus:outline-none focus-visible:ring-1 focus-visible:ring-ink disabled:opacity-30 disabled:cursor-not-allowed'
 const badge = 'font-mono text-[9px] uppercase tracking-widest border border-ink px-1 py-px ml-2 align-middle'
-const TAG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/
 const MIN_PASSWORD = 6
 
 // ── Details + password ───────────────────────────────────────────────────────
@@ -32,7 +32,6 @@ function DetailsSection() {
     date_of_birth: user?.date_of_birth ?? '',
     gender: user?.gender ?? '',
     email: user?.email ?? '',
-    phone: user?.phone ?? '',
   })
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
@@ -46,15 +45,14 @@ function DetailsSection() {
   const today = todayISO()
   const problems = {
     email: emailError(form.email),
-    phone: phoneError(form.phone),
     date_of_birth: birthDateError(form.date_of_birth, today),
   }
   const show = (key: keyof typeof problems) => (touched[key] ? problems[key] : null)
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
-    setTouched({ email: true, phone: true, date_of_birth: true })
-    if (problems.email || problems.phone || problems.date_of_birth) return
+    setTouched({ email: true, date_of_birth: true })
+    if (problems.email || problems.date_of_birth) return
     setError(null)
     setBusy(true)
     try {
@@ -64,7 +62,6 @@ function DetailsSection() {
         date_of_birth: form.date_of_birth || null,
         gender: (form.gender || null) as Gender | null,
         email: form.email.trim(),
-        phone: form.phone.trim() || null,
       })
       setUser(next)
       setSaved(true)
@@ -104,17 +101,6 @@ function DetailsSection() {
           </Select>
         </div>
         <Input id="p-email" label="Email · login" type="email" value={form.email} onChange={set('email')} onBlur={blur('email')} error={show('email')} required />
-        <Input
-          id="p-phone"
-          label="Phone · optional"
-          type="tel"
-          placeholder="+1 415 555 0123"
-          value={form.phone}
-          onChange={set('phone')}
-          onBlur={blur('phone')}
-          error={show('phone')}
-          hint="Include the country code, e.g. +91 or +1"
-        />
         <FormError message={error} />
         <div className="flex items-center justify-end gap-4">
           {saved && <span className="font-mono text-[11px] text-ink-muted">Saved</span>}
@@ -427,168 +413,6 @@ function WorkspacesSection({ focus }: { focus: boolean }) {
   )
 }
 
-// ── Tags ─────────────────────────────────────────────────────────────────────
-
-function TagModal({ open, tag, onClose }: { open: boolean; tag: Tag | null; onClose: () => void }) {
-  const { create, update } = useTagMutations()
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (open) {
-      setName(tag?.name ?? '')
-      setDescription(tag?.description ?? '')
-      setError(null)
-    }
-  }, [open, tag])
-
-  const valid = TAG_RE.test(name)
-  const busy = create.isPending || update.isPending
-
-  const save = async () => {
-    if (!valid) return
-    setError(null)
-    try {
-      if (tag) await update.mutateAsync({ id: tag.id, name, description: description.trim() || null })
-      else await create.mutateAsync({ name, description: description.trim() || null })
-      onClose()
-    } catch (err) {
-      setError(apiErrorMessage(err, 'Could not save tag'))
-    }
-  }
-
-  return (
-    <Modal
-      open={open}
-      onOpenChange={(o) => !o && onClose()}
-      title={tag ? 'Edit tag' : 'New tag'}
-      size="md"
-      footer={
-        <div className="flex justify-end gap-5">
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={save} isLoading={busy} disabled={!valid}>
-            Save
-          </Button>
-        </div>
-      }
-    >
-      <div className="px-5 sm:px-7 py-5 flex flex-col gap-5">
-        <Input
-          id="tag-name"
-          label="Tag name"
-          value={name}
-          maxLength={40}
-          onChange={(e) => setName(e.target.value.toLowerCase())}
-          hint="lowercase-hyphenated, e.g. emergency-fund"
-          error={name && !valid ? 'Use lowercase letters, digits and single hyphens' : null}
-          autoFocus
-        />
-        <Input id="tag-desc" label="Description · optional" value={description} maxLength={500} onChange={(e) => setDescription(e.target.value)} />
-        <FormError message={error} />
-      </div>
-    </Modal>
-  )
-}
-
-function TagsSection() {
-  const { data: tags = [], isLoading } = useTags()
-  const { remove, seed } = useTagMutations()
-  const [modal, setModal] = useState<{ open: boolean; tag: Tag | null }>({ open: false, tag: null })
-  const [deleting, setDeleting] = useState<Tag | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  const confirmDelete = async () => {
-    if (!deleting) return
-    setError(null)
-    try {
-      await remove.mutateAsync(deleting.id)
-      setDeleting(null)
-    } catch (err) {
-      setError(apiErrorMessage(err, 'Could not delete tag'))
-    }
-  }
-
-  return (
-    <section className="flex flex-col gap-4 min-w-0">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className={sectionTitle}>Tags · {tags.length} · shared by all your workspaces</h2>
-        <div className="flex items-center gap-5">
-          <Button variant="secondary" onClick={() => seed.mutate()} isLoading={seed.isPending}>
-            Seed defaults
-          </Button>
-          <Button onClick={() => setModal({ open: true, tag: null })}>+ New tag</Button>
-        </div>
-      </div>
-      {isLoading ? (
-        <Loading />
-      ) : tags.length === 0 ? (
-        <p className="font-mono text-[11px] text-ink-muted border border-dashed border-line px-4 py-6 text-center">No tags. Seed the defaults or add your own.</p>
-      ) : (
-        <Table>
-          <thead>
-            <tr>
-              <th className={th}>Tag</th>
-              <th className={cn(th, showFrom.md)}>Description</th>
-              <th className={cn(th, 'text-right', showFrom.sm)}>Accounts</th>
-              <th className={cn(th, 'text-right', showFrom.sm)}>Portfolios</th>
-              <th className={th}>
-                <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {tags.map((t) => (
-              <tr key={t.id}>
-                <td className={cn(td, 'whitespace-normal')}>
-                  <Chip>{t.name}</Chip>
-                  {t.description && <div className={cn('text-[10px] text-ink-muted mt-1', onlyBelow.md)}>{t.description}</div>}
-                  <div className={cn('text-[10px] text-ink-muted mt-0.5', onlyBelow.sm)}>
-                    {t.account_count} accounts · {t.portfolio_count} portfolios
-                  </div>
-                </td>
-                <td className={cn(td, 'text-ink-muted whitespace-normal min-w-[12rem]', showFrom.md)}>{t.description ?? '—'}</td>
-                <td className={cn(td, 'text-right num', showFrom.sm)}>{t.account_count}</td>
-                <td className={cn(td, 'text-right num', showFrom.sm)}>{t.portfolio_count}</td>
-                <td className={cn(td, 'text-right py-0')}>
-                  <div className="inline-flex items-center gap-1">
-                    <button type="button" className={iconBtn} aria-label={`Edit tag ${t.name}`} onClick={() => setModal({ open: true, tag: t })}>
-                      <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      className={iconBtn}
-                      aria-label={`Delete tag ${t.name}`}
-                      onClick={() => {
-                        setError(null)
-                        setDeleting(t)
-                      }}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
-      )}
-      <TagModal open={modal.open} tag={modal.tag} onClose={() => setModal({ open: false, tag: null })} />
-      <ConfirmDialog
-        open={!!deleting}
-        onOpenChange={(o) => !o && setDeleting(null)}
-        title="Delete tag"
-        body={<>Delete “{deleting?.name}”? Removes it from every account and portfolio; balances are untouched.</>}
-        onConfirm={confirmDelete}
-        isLoading={remove.isPending}
-        error={error}
-      />
-    </section>
-  )
-}
-
 export type ProfileSection = 'workspaces' | null
 
 function AppearanceSection() {
@@ -612,7 +436,7 @@ export default function ProfileModal({ open, onOpenChange, section }: { open: bo
       title="Profile"
       subtitle={
         <>
-          Your details, the workspaces you track, and the tags you use on accounts and portfolios.
+          Your details, the workspaces you track, and the buckets your money is for.
           {user && <> · Member since {formatDate(user.created_at.slice(0, 10))}</>}
         </>
       }
@@ -624,7 +448,7 @@ export default function ProfileModal({ open, onOpenChange, section }: { open: bo
         </div>
         <div className="flex flex-col gap-10 min-w-0">
           <WorkspacesSection focus={open && section === 'workspaces'} />
-          <TagsSection />
+          <BucketsSection />
         </div>
       </div>
     </Modal>

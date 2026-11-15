@@ -7,12 +7,16 @@ import { WorkspaceProvider } from './context/WorkspaceContext'
 import { LoginPage } from './pages/LoginPage'
 
 // Charts (recharts) only load with the pages that draw them.
+const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const AccountsPage = lazy(() => import('./pages/AccountsPage'))
 const AccountDetailPage = lazy(() => import('./pages/AccountDetailPage'))
 const PortfoliosPage = lazy(() => import('./pages/PortfoliosPage'))
 const PortfolioDetailPage = lazy(() => import('./pages/PortfolioDetailPage'))
 const SnapshotPage = lazy(() => import('./pages/SnapshotPage'))
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'))
+const MetricsPage = lazy(() => import('./pages/MetricsPage'))
+const EstimatorPage = lazy(() => import('./pages/EstimatorPage'))
+const EstimatorInquiryPage = lazy(() => import('./pages/EstimatorInquiryPage'))
 
 function RequireAuth() {
   const { user } = useAuth()
@@ -37,17 +41,22 @@ export default function App() {
   const { user } = useAuth()
   return (
     <Routes>
-      <Route path="/login" element={user ? <Navigate to="/accounts" replace /> : <LoginPage />} />
+      <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
       <Route element={<RequireAuth />}>
-        <Route index element={<Navigate to="/accounts" replace />} />
+        <Route index element={<Navigate to="/dashboard" replace />} />
+        <Route path="/dashboard" element={page(<DashboardPage />)} />
         <Route path="/accounts" element={page(<AccountsPage />)} />
         <Route path="/accounts/:accountId" element={page(<AccountDetailPage />)} />
         <Route path="/portfolios" element={page(<PortfoliosPage />)} />
         <Route path="/portfolios/:portfolioId" element={page(<PortfolioDetailPage />)} />
         <Route path="/portfolios/:portfolioId/snapshots/new" element={page(<SnapshotPage />)} />
+        <Route path="/accounts/:accountId/portfolio/new" element={page(<SnapshotPage />)} />
         <Route path="/analytics" element={page(<AnalyticsPage />)} />
+        <Route path="/metrics" element={page(<MetricsPage />)} />
+        <Route path="/estimator" element={page(<EstimatorPage />)} />
+        <Route path="/estimator/:inquiryId" element={page(<EstimatorInquiryPage />)} />
         <Route path="/profile" element={<ProfileRedirect />} />
-        <Route path="*" element={<Navigate to="/accounts" replace />} />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Route>
     </Routes>
   )

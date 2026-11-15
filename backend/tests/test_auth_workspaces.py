@@ -1,11 +1,11 @@
 from tests.conftest import Api, register
 
 
-def test_register_creates_default_workspace_and_tags(api: Api):
+def test_register_creates_default_workspace_and_buckets(api: Api):
     workspaces = api.workspaces()
     assert [t["name"] for t in workspaces] == ["Personal"]
     assert workspaces[0]["is_default"] is True
-    assert set(api.tags()) == {"emergency-fund", "trading", "fixed-income", "savings", "retirement", "salary"}
+    assert list(api.buckets()) == ["Growth", "Emergency fund", "Extra cash"]
 
 
 def test_register_rejects_short_password_and_duplicate_email(client):
@@ -72,45 +72,15 @@ def test_workspace_isolation_between_own_workspaces(api: Api):
     assert api.get(f"/api/accounts/{acc['id']}", workspace_id=second["id"]).status_code == 404
 
 
-def test_tags_crud_seed_and_shared_across_workspaces(api: Api):
-    tags = api.tags()
-    second = api.post("/api/workspaces", json={"name": "Parents"}).json()
-    # Tags belong to the user, so another workspace's account can use them.
-    res = api.post(
-        "/api/accounts",
-        json={"name": "FD", "account_type": "fixed_deposit", "currency": "INR", "tag_ids": [tags["fixed-income"]]},
-        workspace_id=second["id"],
-    )
-    assert res.status_code == 201
-    listing = {t["name"]: t for t in api.get("/api/tags").json()}
-    assert listing["fixed-income"]["account_count"] == 1
-
-    assert api.post("/api/tags", json={"name": "Bad Name"}).status_code == 422
-    assert api.post("/api/tags", json={"name": "travel"}).status_code == 201
-    assert api.post("/api/tags", json={"name": "travel"}).status_code == 409
-
-    # Deleting a tag removes it from accounts; seeding restores only missing defaults.
-    assert api.delete(f"/api/tags/{tags['fixed-income']}").status_code == 204
-    detail = api.get(f"/api/accounts/{res.json()['id']}", workspace_id=second["id"]).json()
-    assert detail["tags"] == []
-    names = [t["name"] for t in api.post("/api/tags/seed").json()]
-    assert names.count("fixed-income") == 1 and "travel" in names
-
-
-def test_register_validates_phone_email_and_birth_date(client):
+def test_register_validates_email_and_birth_date(client):
     base = {"first_name": "A", "last_name": "B", "password": "secret1"}
     bad = [
         {"email": "not-an-email"},
-        {"email": "p1@example.com", "phone": "12-34"},
-        {"email": "p2@example.com", "phone": "call me maybe"},
-        {"email": "p3@example.com", "phone": "+1 234 567 890 123 456"},
         {"email": "p4@example.com", "date_of_birth": "2999-01-01"},
         {"email": "p5@example.com", "date_of_birth": "1850-01-01"},
     ]
     for extra in bad:
         assert client.post("/api/auth/register", json=base | extra).status_code == 422, extra
-    ok = client.post("/api/auth/register", json=base | {"email": "ok@example.com", "phone": " +1 (415) 555-0123 ", "date_of_birth": "1990-05-17"})
+    ok = client.post("/api/auth/register", json=base | {"email": "ok@example.com", "phone": "+1 415 555 0123", "date_of_birth": "1990-05-17"})
     assert ok.status_code == 201, ok.text
-    assert ok.json()["user"]["phone"] == "+1 (415) 555-0123"
-    blank = client.post("/api/auth/register", json=base | {"email": "blank@example.com", "phone": "  "})
-    assert blank.json()["user"]["phone"] is None
+    assert "phone" not in ok.json()["user"]  # not stored any more

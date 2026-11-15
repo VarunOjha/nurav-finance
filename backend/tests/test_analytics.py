@@ -14,15 +14,14 @@ def _overview(api: Api, today: date) -> dict:
 
 
 def test_per_currency_series_with_carry_forward_and_close(api: Api):
-    tags = api.tags()
-    usd = api.account(name="Chase", currency="USD", tag_ids=[tags["salary"]])
+    usd = api.account(name="Chase", currency="USD")
     old = api.account(name="Wells", currency="USD", closed_on="2024-03-15")
-    inr = api.account(name="SBI", currency="INR", tag_ids=[tags["savings"]])
+    inr = api.account(name="SBI", currency="INR")
     api.balance(usd["id"], "100", "2024-01-10")
     api.balance(usd["id"], "150", "2024-03-05")
     api.balance(old["id"], "40", "2024-01-20")
     api.balance(inr["id"], "1000", "2024-02-01")
-    port = api.portfolio(name="Fidelity", currency="USD", tag_ids=[tags["trading"]])
+    port = api.portfolio(name="Fidelity", currency="USD")
     api.snapshot(port["id"], "2024-02-28", [("AAPL", 2, 100, "stock"), ("BND", 1, 50, "bond")])
 
     data = _overview(api, today=date(2024, 4, 10))
@@ -36,9 +35,6 @@ def test_per_currency_series_with_carry_forward_and_close(api: Api):
 
     inr_series = next(c for c in data["currencies"] if c["currency"] == "INR")
     assert inr_series["accounts"][0] is None and str(inr_series["accounts"][1]) == "1000.0000"
-
-    salary = next(t for t in data["tags"] if t["tag"] == "salary")
-    assert [str(v) for v in salary["currencies"][0]["values"]] == ["100.0000", "100.0000", "150.0000", "150.0000"]
 
     classes = {s["label"]: str(s["value"]) for s in next(a for a in data["allocation"]["by_asset_class"] if a["currency"] == "USD")["slices"]}
     assert classes == {"cash": "150.0000", "stock": "200.0000", "bond": "50.0000"}
@@ -90,8 +86,8 @@ def test_top_assets_merge_holdings_and_skip_debts_closed_and_linked(api: Api):
 
 
 def test_linked_account_counts_through_its_portfolio_while_open(api: Api):
-    tags = api.tags()
-    cash = api.account(name="Schwab cash", currency="USD", account_type="brokerage", tag_ids=[tags["trading"]])
+    cash = api.account(name="Schwab cash", currency="USD", account_type="brokerage")
+    api.split(cash["id"], {"Growth": 100})
     api.balance(cash["id"], "1000", "2024-01-10")
     api.portfolio(name="Schwab", currency="USD", account_id=cash["id"], closed_on="2024-02-15")
     other = api.portfolio(name="Fidelity", currency="USD")
@@ -109,8 +105,9 @@ def test_linked_account_counts_through_its_portfolio_while_open(api: Api):
     assert usd["current_accounts"] is None and usd["account_count"] == 0
     by_type = {s["label"] for s in data["allocation"]["by_type"][0]["slices"]}
     assert by_type == {"brokerage"}  # a portfolio counts as its brokerage account, never a type of its own
-    trading = next(t for t in data["tags"] if t["tag"] == "trading")
-    assert trading["currencies"][0]["values"] == [None, None]
+    # Schwab has no snapshot yet and its cash is hidden behind it: Growth holds nothing.
+    rows = data["buckets"]["currencies"][0]["rows"]
+    assert [r["bucket_id"] for r in rows] == [None]
 
 
 def test_allocation_lenses_agree_on_where_and_what(api: Api):
@@ -118,14 +115,16 @@ def test_allocation_lenses_agree_on_where_and_what(api: Api):
     savings = api.account(name="Savings", currency="USD", account_type="savings")
     ira = api.account(name="IRA", currency="USD", account_type="retirement")
     broker = api.account(name="Broker", currency="USD", account_type="brokerage")
+    house = api.account(name="House", currency="USD", account_type="asset")
     api.balance(savings["id"], "100", "2024-01-10")
     api.balance(ira["id"], "300", "2024-01-10")
+    api.balance(house["id"], "5000", "2024-01-10")
     port = api.portfolio(name="Broker holdings", currency="USD", account_id=broker["id"])
     api.snapshot(port["id"], "2024-01-20", [("VTI", 2, 100, "etf")])
 
     alloc = _overview(api, today=date(2024, 2, 1))["allocation"]
     by_type = {s["label"]: str(s["value"]) for s in alloc["by_type"][0]["slices"]}
-    assert by_type == {"savings": "100.0000", "retirement": "300.0000", "brokerage": "200.0000"}
+    assert by_type == {"savings": "100.0000", "retirement": "300.0000", "brokerage": "200.0000", "asset": "5000.0000"}
     by_class = {s["label"]: str(s["value"]) for s in alloc["by_asset_class"][0]["slices"]}
-    # The IRA balance is invested in something unknown — not cash.
-    assert by_class == {"cash": "100.0000", "unclassified": "300.0000", "etf": "200.0000"}
+    # The IRA balance is invested in something unknown — not cash; a house is property.
+    assert by_class == {"cash": "100.0000", "unclassified": "300.0000", "etf": "200.0000", "property": "5000.0000"}

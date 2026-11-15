@@ -8,9 +8,9 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from database import get_db, utcnow
+from database import get_db
 from dependencies import get_current_workspace
-from models import Holding, Portfolio, PortfolioTag, Snapshot, Workspace
+from models import Holding, Portfolio, Snapshot, Workspace
 from models.account import PORTFOLIO_ACCOUNT_TYPES
 from schemas.common import latest_allowed_date
 from schemas.portfolio import (
@@ -24,9 +24,8 @@ from schemas.portfolio import (
     SnapshotPrefill,
     SnapshotSummary,
 )
-from schemas.workspaces import TagRef
 from services import soft_delete
-from services.access import get_account, get_portfolio, get_snapshot, owned_tags
+from services.access import get_account, get_portfolio, get_snapshot
 from services.holdings import ZERO, allocation, compare, holding_cost, holding_gain, holding_value, share, snapshot_cost, snapshot_total
 from services.ledger import Point, Timeline, add_months, month_end, month_key, months_between
 
@@ -74,11 +73,8 @@ def _summary(p: Portfolio, snapshots: list[Snapshot]) -> PortfolioSummary:
         provider=p.provider,
         currency=p.currency,
         account=p.account,
-        opened_on=p.opened_on,
         closed_on=p.closed_on,
         status="closed" if p.closed_on else "active",
-        notes=p.notes,
-        tags=[TagRef.model_validate(link.tag) for link in p.tag_links],
         value=latest.value if latest else None,
         value_as_of=latest.as_of if latest else None,
         previous_value=previous.value if previous else None,
@@ -90,31 +86,24 @@ def _summary(p: Portfolio, snapshots: list[Snapshot]) -> PortfolioSummary:
 
 def _with_relations(stmt):
     return stmt.options(
-        selectinload(Portfolio.tag_links).selectinload(PortfolioTag.tag),
         selectinload(Portfolio.account),
     )
 
 
-def _check_dates(opened_on: date | None, closed_on: date | None) -> None:
-    if opened_on and closed_on and closed_on < opened_on:
-        raise HTTPException(status_code=422, detail="Closed date can't be before the opened date")
-
-
-def _replace_tags(db: Session, workspace: Workspace, p: Portfolio, tag_ids: list[uuid.UUID]) -> None:
-    wanted = {t.id for t in owned_tags(db, workspace, tag_ids)}
-    now = utcnow()
-    current = {link.tag_id: link for link in p.tag_links}
-    for tag_id, link in current.items():
-        if tag_id not in wanted:
-            link.deleted_at = now
-    for tag_id in wanted - current.keys():
-        db.add(PortfolioTag(portfolio_id=p.id, tag_id=tag_id))
-
-
-def _check_account(db: Session, workspace: Workspace, account_id: uuid.UUID) -> None:
+def _check_account(db: Session, workspace: Workspace, account_id: uuid.UUID, portfolio_id: uuid.UUID | None = None) -> None:
     account = get_account(db, workspace, account_id)  # same workspace, live
     if account.account_type not in PORTFOLIO_ACCOUNT_TYPES:
         raise HTTPException(status_code=422, detail="Portfolios belong to brokerage accounts")
+    # An account's holdings are its one portfolio: new holdings go on it as snapshots.
+    taken = select(Portfolio).where(Portfolio.account_id == account_id)
+    if portfolio_id is not None:
+        taken = taken.where(Portfolio.id != portfolio_id)
+    other = db.scalar(taken)
+    if other is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{account.name} already has its portfolio “{other.name}”. Record new holdings on it as a snapshot.",
+        )
 
 
 def _one(db: Session, workspace: Workspace, portfolio_id: uuid.UUID) -> PortfolioSummary:
@@ -232,12 +221,16 @@ def consolidated(workspace: Workspace = Depends(get_current_workspace), db: Sess
 
 @router.post("", response_model=PortfolioSummary, status_code=status.HTTP_201_CREATED)
 def create_portfolio(body: PortfolioCreate, workspace: Workspace = Depends(get_current_workspace), db: Session = Depends(get_db)) -> PortfolioSummary:
-    _check_dates(body.opened_on, body.closed_on)
     _check_account(db, workspace, body.account_id)
-    p = Portfolio(workspace_id=workspace.id, **body.model_dump(exclude={"tag_ids"}))
+    p = Portfolio(workspace_id=workspace.id, **body.model_dump(exclude={"snapshot"}))
     db.add(p)
-    db.flush()
-    _replace_tags(db, workspace, p, body.tag_ids)
+    try:
+        db.flush()
+    except IntegrityError:  # another request just created this account's portfolio
+        db.rollback()
+        raise HTTPException(status_code=409, detail="This account already has its portfolio") from None
+    if body.snapshot is not None:
+        _add_snapshot(db, p, body.snapshot)  # same transaction: both or neither
     db.commit()
     return _one(db, workspace, p.id)
 
@@ -255,14 +248,12 @@ def update_portfolio(
 ) -> PortfolioSummary:
     p = get_portfolio(db, workspace, portfolio_id)
     data = body.model_dump(exclude_unset=True)
-    opened_on = data.get("opened_on", p.opened_on)
     closed_on = data.get("closed_on", p.closed_on)
-    _check_dates(opened_on, closed_on)
+    if closed_on and closed_on > latest_allowed_date():
+        raise HTTPException(status_code=422, detail="Closing date cannot be in the future")
     snaps = snapshots_by_portfolio(db, [p.id])[p.id]
     if snaps:
         days = [s.as_of for s in snaps]
-        if opened_on and min(days) < opened_on:
-            raise HTTPException(status_code=422, detail="There are snapshots before that opened date")
         if closed_on and max(days) > closed_on:
             raise HTTPException(status_code=422, detail="There are snapshots after that closed date")
         if data.get("currency") and data["currency"] != p.currency:
@@ -270,15 +261,13 @@ def update_portfolio(
     if "account_id" in data:
         if data["account_id"] is None:
             raise HTTPException(status_code=422, detail="A portfolio must belong to an account")
-        _check_account(db, workspace, data["account_id"])
+        _check_account(db, workspace, data["account_id"], portfolio_id=p.id)
     for field in ("name", "currency"):
         if field in data and data[field] is None:
             del data[field]
-    for field in ("name", "provider", "currency", "account_id", "opened_on", "closed_on", "notes"):
+    for field in ("name", "provider", "currency", "account_id", "closed_on"):
         if field in data:
             setattr(p, field, data[field])
-    if body.tag_ids is not None:
-        _replace_tags(db, workspace, p, body.tag_ids)
     db.commit()
     return _one(db, workspace, p.id)
 
@@ -369,10 +358,16 @@ def create_snapshot(
     portfolio_id: uuid.UUID, body: SnapshotCreate, workspace: Workspace = Depends(get_current_workspace), db: Session = Depends(get_db)
 ) -> SnapshotSummary:
     p = get_portfolio(db, workspace, portfolio_id)
+    snapshot = _add_snapshot(db, p, body)
+    db.commit()
+    db.expire_all()
+    return _snapshot_summary(get_snapshot(db, p, snapshot.id))
+
+
+def _add_snapshot(db: Session, p: Portfolio, body: SnapshotCreate) -> Snapshot:
+    """Validate and stage a snapshot with its holdings (the caller commits)."""
     if body.as_of > latest_allowed_date():
         raise HTTPException(status_code=422, detail="Date cannot be in the future")
-    if p.opened_on and body.as_of < p.opened_on:
-        raise HTTPException(status_code=422, detail="Date is before the portfolio was opened")
     if p.closed_on and body.as_of > p.closed_on:
         raise HTTPException(status_code=422, detail="Date is after the portfolio was closed")
     symbols = [h.symbol.strip().upper() for h in body.holdings]
@@ -398,9 +393,8 @@ def create_snapshot(
                 current_price=h.current_price,
             )
         )
-    db.commit()
-    db.expire_all()
-    return _snapshot_summary(get_snapshot(db, p, snapshot.id))
+    db.flush()
+    return snapshot
 
 
 @router.delete("/{portfolio_id}/snapshots/{snapshot_id}", status_code=status.HTTP_204_NO_CONTENT)
